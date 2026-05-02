@@ -8,14 +8,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Install and Build
+        # Esto le dice al robot que entre en tu carpeta 'web'
+        working-directory: ./web
         run: |
-          cd web
           npm install
           npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
