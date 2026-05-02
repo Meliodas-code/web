@@ -10,9 +10,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install and Build
-        # Aquí le decimos que entre en la carpeta web para trabajar
+        # Usamos 'working-directory' para decirle al robot exactamente dónde entrar
+        working-directory: ./web
         run: |
-          cd web
           npm install
           npm run build
         env:
