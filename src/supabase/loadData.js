@@ -1,0 +1,143 @@
+const VOTO_KEY = /^voto(\d+)$/i;
+
+function normName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase();
+}
+
+function getFirstPresentKey(row, candidates) {
+  for (const cand of candidates) {
+    if (Object.prototype.hasOwnProperty.call(row, cand)) return cand;
+  }
+  const lowered = {};
+  for (const k of Object.keys(row)) {
+    lowered[String(k).trim().toLowerCase()] = k;
+  }
+  for (const cand of candidates) {
+    const fk = lowered[String(cand).trim().toLowerCase()];
+    if (fk !== undefined) return fk;
+  }
+  return null;
+}
+
+function votesFromUnitRow(row, baseVal) {
+  const votes = {};
+  for (const [k, v] of Object.entries(row || {})) {
+    const m = VOTO_KEY.exec(String(k).trim());
+    if (m && v != null && v !== "") votes[`voto${parseInt(m[1], 10)}`] = Number(v);
+  }
+  const b = Number(baseVal) || 0;
+  for (let i = 1; i < 13; i++) {
+    const key = `voto${i}`;
+    if (!(key in votes)) votes[key] = b;
+  }
+  votes.voto13 =
+    votes.voto13 !== undefined ? votes.voto13 : votes.voto2 !== undefined ? votes.voto2 : b;
+  return votes;
+}
+
+function mergeVoteRow(existing, voteRow) {
+  const out = { ...(existing || {}) };
+  for (const [k, v] of Object.entries(voteRow || {})) {
+    if (k === "unit_name" || k === "id") continue;
+    const m = VOTO_KEY.exec(String(k).trim());
+    if (m && v != null && v !== "") out[`voto${parseInt(m[1], 10)}`] = Number(v);
+  }
+  const base = out.voto2 !== undefined ? out.voto2 : out.voto1 !== undefined ? out.voto1 : 0;
+  for (let i = 1; i < 13; i++) {
+    const key = `voto${i}`;
+    if (!(key in out)) out[key] = base;
+  }
+  out.voto13 =
+    out.voto13 !== undefined ? out.voto13 : out.voto2 !== undefined ? out.voto2 : base;
+  return out;
+}
+
+/**
+ * Igual que `services/supabase_loader.py`: unidades normalizadas + mapa nombre -> valores voto.
+ */
+export async function loadUnitsAndVotes() {
+  const url = (import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+  const unitsTable =
+    import.meta.env.VITE_UNITS_TABLE?.trim() || "units";
+  const votesTable =
+    import.meta.env.VITE_VOTES_TABLE?.trim() || "unit_votes";
+
+  if (!url || !key) {
+    throw new Error(
+      "Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY. Crea web/.env con las variables."
+    );
+  }
+
+  const headers = {
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+    Accept: "application/json",
+  };
+
+  const unitsPath = `${url}/rest/v1/${encodeURIComponent(unitsTable)}?select=*`;
+  const r = await fetch(unitsPath, { headers });
+  if (!r.ok) {
+    throw new Error(`Supabase units: ${r.status} ${await r.text()}`);
+  }
+  const rows = await r.json();
+  if (!Array.isArray(rows)) throw new Error("Respuesta units inesperada");
+
+  /** @type {Record<string, Record<string, number>>} */
+  const vote_values = {};
+  /** @type {Array<{nombre:string,nombre_en:string,valor:number,imagen:string,rareza:string}>} */
+  const units_out = [];
+
+  for (const row of rows) {
+    const nombre = row.nombre;
+    if (!nombre) continue;
+    const valor = row.valor != null ? Number(row.valor) : 0;
+    units_out.push({
+      nombre,
+      nombre_en: row.nombre_en || "",
+      valor,
+      imagen: row.imagen || "",
+      rareza: String(row.rareza || "").trim(),
+    });
+    vote_values[nombre] = votesFromUnitRow(row, valor);
+  }
+
+  const voteValuesByNorm = {};
+  for (const name of Object.keys(vote_values)) {
+    voteValuesByNorm[normName(name)] = name;
+  }
+
+  if (votesTable) {
+    const votesPath = `${url}/rest/v1/${encodeURIComponent(votesTable)}?select=*`;
+    try {
+      const rv = await fetch(votesPath, { headers });
+      if (rv.ok) {
+        const vr = await rv.json();
+        if (Array.isArray(vr)) {
+          const configured = import.meta.env.VITE_VOTES_KEY_COLUMN?.trim();
+          const keyCandidates = [];
+          if (configured) keyCandidates.push(configured);
+          keyCandidates.push("unit_name", "nombre", "name");
+
+          for (const vrrow of vr) {
+            const keyCol = getFirstPresentKey(vrrow, keyCandidates);
+            if (!keyCol) continue;
+            const rawName = vrrow[keyCol];
+            if (!rawName) continue;
+            const unit_name = voteValuesByNorm[normName(rawName)];
+            if (!unit_name) continue;
+            vote_values[unit_name] = mergeVoteRow(vote_values[unit_name], vrrow);
+          }
+        }
+      }
+    } catch {
+      /* ignorar igual que Python */
+    }
+  }
+
+  if (!units_out.length) throw new Error("No hay unidades en la tabla.");
+
+  return { units: units_out, vote_values };
+}
