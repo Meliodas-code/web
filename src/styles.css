@@ -1338,15 +1338,26 @@ button:focus-visible,
   opacity: 0.85;
 }
 
-.scanner-crane {
+.scanner-crane-wrap {
   position: absolute;
-  right: -4%;
-  bottom: -8%;
-  width: min(72vw, 380px);
-  max-height: 85%;
-  opacity: 0.42;
-  filter: drop-shadow(0 12px 40px rgba(0, 0, 0, 0.55));
-  animation: scanner-crane-sway 7s ease-in-out infinite;
+  z-index: 1;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0 3% 4%;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.scanner-crane {
+  width: min(52vw, 230px);
+  height: auto;
+  max-height: min(42vh, 240px);
+  flex-shrink: 0;
+  opacity: 0.4;
+  filter: drop-shadow(0 10px 32px rgba(0, 0, 0, 0.5));
+  animation: scanner-crane-sway 8s ease-in-out infinite;
 }
 
 @keyframes scanner-crane-sway {
@@ -1355,7 +1366,7 @@ button:focus-visible,
     transform: translate(0, 0) rotate(0deg);
   }
   50% {
-    transform: translate(-6px, -4px) rotate(-0.8deg);
+    transform: translate(-4px, -2px) rotate(-0.6deg);
   }
 }
 
@@ -1415,6 +1426,65 @@ button:focus-visible,
   font-size: 0.95rem;
   color: var(--muted);
   font-weight: 500;
+}
+
+.scanner-countdown-target {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.scanner-countdown-head {
+  margin: 1rem 0 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(251, 191, 36, 0.7);
+}
+
+.scanner-countdown {
+  display: flex;
+  gap: 0.45rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 0 0 0.15rem;
+}
+
+.scanner-cd-cell {
+  min-width: 3.35rem;
+  padding: 0.5rem 0.4rem 0.45rem;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.38);
+  border: 1px solid rgba(251, 191, 36, 0.22);
+}
+
+.scanner-cd-val {
+  display: block;
+  font-size: 1.28rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: #fef3c7;
+  line-height: 1.15;
+}
+
+.scanner-cd-lbl {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.scanner-countdown-done {
+  margin: 0;
+  padding: 0.35rem 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #86efac;
 }
 
 .scanner-blink {
