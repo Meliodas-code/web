@@ -10,7 +10,9 @@ const ALIAS = {
   special: "special grade",
   "grado ascendido": "ascended grade",
   ascended: "ascended grade",
-  Aniversary: "aniversary",
+  aniversary: "aniversary",
+  anniversary: "aniversary",
+  aniversario: "aniversary",
 };
 
 const ORDER = {
@@ -19,7 +21,7 @@ const ORDER = {
   mythic: 2,
   "special grade": 3,
   "ascended grade": 4,
-  "Aniversary": 5,
+  aniversary: 5,
 };
 
 export function normalizeRarity(raw) {
