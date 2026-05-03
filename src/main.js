@@ -40,6 +40,52 @@ let lastSearchTrade = "";
 /** Tras escribir en el buscador, re-render quita foco — lo restauramos solo en ese caso. */
 let pendingToolbarFocusRoute = /** @type {null | "calc" | "trade"} */ (null);
 
+/** Cuenta atrás pantalla Scanner (se limpia al cambiar de ruta). */
+let scannerCountdownTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
+
+/** Martes 5 may 2026, 20:00 hora peninsular (España, CEST). */
+const SCANNER_LAUNCH_AT_MS = Date.parse("2026-05-05T20:00:00+02:00");
+
+function clearScannerCountdown() {
+  if (scannerCountdownTimer) {
+    clearInterval(scannerCountdownTimer);
+    scannerCountdownTimer = null;
+  }
+}
+
+/** @param {HTMLElement} root .view-scanner */
+function updateScannerCountdown(root) {
+  const row = root.querySelector("[data-scanner-countdown]");
+  if (!row) return;
+  const left = SCANNER_LAUNCH_AT_MS - Date.now();
+  if (left <= 0) {
+    if (scannerCountdownTimer) {
+      clearInterval(scannerCountdownTimer);
+      scannerCountdownTimer = null;
+    }
+    row.replaceChildren();
+    const p = document.createElement("p");
+    p.className = "scanner-countdown-done";
+    p.textContent = t(lang, "scanner.countdown_done");
+    row.appendChild(p);
+    return;
+  }
+  const s = Math.floor(left / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  const dEl = row.querySelector("[data-cd-d]");
+  const hEl = row.querySelector("[data-cd-h]");
+  const mEl = row.querySelector("[data-cd-m]");
+  const sEl = row.querySelector("[data-cd-s]");
+  if (dEl) dEl.textContent = String(d);
+  if (hEl) hEl.textContent = pad(h);
+  if (mEl) mEl.textContent = pad(m);
+  if (sEl) sEl.textContent = pad(sec);
+}
+
 function maybeRefocusToolbarSearch(route) {
   if (pendingToolbarFocusRoute !== route) return;
   pendingToolbarFocusRoute = null;
@@ -774,26 +820,30 @@ function buildScannerView() {
   bg.setAttribute("aria-hidden", "true");
   bg.innerHTML = `
     <div class="scanner-grid"></div>
-    <div class="scanner-stripes"></div>
-    <svg class="scanner-crane" viewBox="0 0 320 280" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <div class="scanner-stripes"></div>`;
+
+  const crane = document.createElement("div");
+  crane.className = "scanner-crane-wrap";
+  crane.setAttribute("aria-hidden", "true");
+  crane.innerHTML = `
+    <svg class="scanner-crane" viewBox="0 0 200 220" preserveAspectRatio="xMidYMax meet" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="sc-mast" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#5a6578"/>
-          <stop offset="100%" stop-color="#3d4555"/>
+        <linearGradient id="sc-mast" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#6b7280"/>
+          <stop offset="100%" stop-color="#3d4454"/>
         </linearGradient>
-        <linearGradient id="sc-jib" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#f59e0b"/>
-          <stop offset="100%" stop-color="#d97706"/>
+        <linearGradient id="sc-jib" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#fcd34d"/>
+          <stop offset="100%" stop-color="#b45309"/>
         </linearGradient>
       </defs>
-      <rect x="138" y="48" width="44" height="200" rx="4" fill="url(#sc-mast)"/>
-      <rect x="120" y="228" width="80" height="14" rx="3" fill="#2a3140"/>
-      <path d="M 162 48 L 280 72 L 280 88 L 162 68 Z" fill="url(#sc-jib)" opacity="0.95"/>
-      <rect x="268" y="72" width="8" height="120" rx="2" fill="#fbbf24"/>
-      <line x1="272" y1="88" x2="272" y2="188" stroke="#1a1d26" stroke-width="2" opacity="0.35"/>
-      <path d="M 268 188 Q 240 210 200 218" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
-      <rect x="188" y="208" width="28" height="20" rx="2" fill="#475569" stroke="#f59e0b" stroke-width="1.5"/>
-      <circle cx="272" cy="72" r="6" fill="#fbbf24"/>
+      <rect x="68" y="178" width="64" height="14" rx="3" fill="#1f2937"/>
+      <rect x="90" y="32" width="20" height="150" rx="3" fill="url(#sc-mast)"/>
+      <path d="M 110 40 L 178 54 L 178 66 L 110 48 Z" fill="url(#sc-jib)"/>
+      <line x1="172" y1="66" x2="152" y2="118" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+      <rect x="136" y="118" width="28" height="20" rx="3" fill="#4b5563" stroke="#f59e0b" stroke-width="1.5"/>
+      <circle cx="178" cy="58" r="5" fill="#fbbf24"/>
+      <rect x="78" y="168" width="44" height="12" rx="2" fill="#374151" stroke="rgba(245,158,11,0.5)" stroke-width="1"/>
     </svg>`;
 
   const card = document.createElement("div");
@@ -803,13 +853,26 @@ function buildScannerView() {
     <h2 class="scanner-title">${escapeHtml(t(lang, "scanner.title"))}</h2>
     <p class="scanner-coming">${escapeHtml(t(lang, "scanner.coming"))}</p>
     <p class="scanner-wip">${escapeHtml(t(lang, "scanner.wip"))}</p>
+    <p class="scanner-countdown-target muted">${escapeHtml(t(lang, "scanner.countdown_target"))}</p>
+    <p class="scanner-countdown-head">${escapeHtml(t(lang, "scanner.countdown_heading"))}</p>
+    <div class="scanner-countdown" data-scanner-countdown>
+      <div class="scanner-cd-cell"><span class="scanner-cd-val" data-cd-d>0</span><span class="scanner-cd-lbl">${escapeHtml(t(lang, "scanner.cd_days"))}</span></div>
+      <div class="scanner-cd-cell"><span class="scanner-cd-val" data-cd-h>00</span><span class="scanner-cd-lbl">${escapeHtml(t(lang, "scanner.cd_hours"))}</span></div>
+      <div class="scanner-cd-cell"><span class="scanner-cd-val" data-cd-m>00</span><span class="scanner-cd-lbl">${escapeHtml(t(lang, "scanner.cd_minutes"))}</span></div>
+      <div class="scanner-cd-cell"><span class="scanner-cd-val" data-cd-s>00</span><span class="scanner-cd-lbl">${escapeHtml(t(lang, "scanner.cd_seconds"))}</span></div>
+    </div>
     <div class="scanner-blink" aria-hidden="true">
       <span class="scanner-blink-dot"></span>
       <span>${escapeHtml(t(lang, "scanner.live_build"))}</span>
     </div>`;
 
   wrap.appendChild(bg);
+  wrap.appendChild(crane);
   wrap.appendChild(card);
+
+  updateScannerCountdown(wrap);
+  scannerCountdownTimer = setInterval(() => updateScannerCountdown(wrap), 1000);
+
   return wrap;
 }
 
@@ -843,6 +906,7 @@ function renderApp() {
   if (!root) return;
   root.style.overflow = "";
 
+  clearScannerCountdown();
   root.innerHTML = "";
 
   const shell = document.createElement("div");
