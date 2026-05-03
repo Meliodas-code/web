@@ -279,6 +279,9 @@ function ensureVoteDialog() {
   document.body.appendChild(d);
   voteDialogEl = d;
   d.querySelector("[data-close-sheet]").addEventListener("click", () => d.close());
+  d.addEventListener("click", (ev) => {
+    if (ev.target === d) d.close();
+  });
 }
 
 function openVoteSheet(mode, unit, side) {
@@ -742,6 +745,7 @@ function buildHomeView() {
 
   card("", t(lang, "nav.calc"), t(lang, "main.calc_desc"), "#/calc");
   card("trade", t(lang, "nav.trade"), t(lang, "main.trade_desc"), "#/trade");
+  card("scanner", t(lang, "nav.scanner"), t(lang, "main.scanner_desc"), "#/scanner");
 
   const foot = document.createElement("p");
   foot.className = "muted foot-credits-link";
@@ -761,6 +765,54 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+function buildScannerView() {
+  const wrap = document.createElement("div");
+  wrap.className = "view-scanner";
+
+  const bg = document.createElement("div");
+  bg.className = "scanner-bg";
+  bg.setAttribute("aria-hidden", "true");
+  bg.innerHTML = `
+    <div class="scanner-grid"></div>
+    <div class="scanner-stripes"></div>
+    <svg class="scanner-crane" viewBox="0 0 320 280" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="sc-mast" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#5a6578"/>
+          <stop offset="100%" stop-color="#3d4555"/>
+        </linearGradient>
+        <linearGradient id="sc-jib" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#f59e0b"/>
+          <stop offset="100%" stop-color="#d97706"/>
+        </linearGradient>
+      </defs>
+      <rect x="138" y="48" width="44" height="200" rx="4" fill="url(#sc-mast)"/>
+      <rect x="120" y="228" width="80" height="14" rx="3" fill="#2a3140"/>
+      <path d="M 162 48 L 280 72 L 280 88 L 162 68 Z" fill="url(#sc-jib)" opacity="0.95"/>
+      <rect x="268" y="72" width="8" height="120" rx="2" fill="#fbbf24"/>
+      <line x1="272" y1="88" x2="272" y2="188" stroke="#1a1d26" stroke-width="2" opacity="0.35"/>
+      <path d="M 268 188 Q 240 210 200 218" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+      <rect x="188" y="208" width="28" height="20" rx="2" fill="#475569" stroke="#f59e0b" stroke-width="1.5"/>
+      <circle cx="272" cy="72" r="6" fill="#fbbf24"/>
+    </svg>`;
+
+  const card = document.createElement("div");
+  card.className = "scanner-card";
+  card.innerHTML = `
+    <p class="scanner-kicker">${escapeHtml(t(lang, "scanner.kicker"))}</p>
+    <h2 class="scanner-title">${escapeHtml(t(lang, "scanner.title"))}</h2>
+    <p class="scanner-coming">${escapeHtml(t(lang, "scanner.coming"))}</p>
+    <p class="scanner-wip">${escapeHtml(t(lang, "scanner.wip"))}</p>
+    <div class="scanner-blink" aria-hidden="true">
+      <span class="scanner-blink-dot"></span>
+      <span>${escapeHtml(t(lang, "scanner.live_build"))}</span>
+    </div>`;
+
+  wrap.appendChild(bg);
+  wrap.appendChild(card);
+  return wrap;
+}
+
 function buildCreditsView() {
   const d = document.createElement("div");
   d.className = "credits-box view-credits";
@@ -777,6 +829,7 @@ function currentRoute() {
   if (h === "/" || h === "/home") return "home";
   if (h.startsWith("/calc")) return "calc";
   if (h.startsWith("/trade")) return "trade";
+  if (h.startsWith("/scanner")) return "scanner";
   if (h.startsWith("/credits")) return "credits";
   return "home";
 }
@@ -803,7 +856,13 @@ function renderApp() {
 
   side.appendChild(title);
 
-  const nav = [{ r: "#/home", k: "nav.home", rr: "home" }, { r: "#/calc", k: "nav.calc", rr: "calc" }, { r: "#/trade", k: "nav.trade", rr: "trade" }, { r: "#/credits", k: "nav.credits", rr: "credits" }];
+  const nav = [
+    { r: "#/home", k: "nav.home", rr: "home" },
+    { r: "#/calc", k: "nav.calc", rr: "calc" },
+    { r: "#/trade", k: "nav.trade", rr: "trade" },
+    { r: "#/scanner", k: "nav.scanner", rr: "scanner" },
+    { r: "#/credits", k: "nav.credits", rr: "credits" },
+  ];
   const cur = currentRoute();
   for (const { r, k, rr } of nav) {
     const b = document.createElement("button");
@@ -835,6 +894,7 @@ function renderApp() {
   if (route === "home") main.appendChild(buildHomeView());
   else if (route === "calc") main.appendChild(buildCalcView());
   else if (route === "trade") main.appendChild(buildTradeView());
+  else if (route === "scanner") main.appendChild(buildScannerView());
   else main.appendChild(buildCreditsView());
 
   shell.appendChild(side);
