@@ -6,6 +6,7 @@ export const I18N = {
       home: "Inicio",
       calc: "Calculadora",
       trade: "Comparador",
+      scanner: "Scanner",
       credits: "Créditos",
     },
     main: {
@@ -19,6 +20,14 @@ export const I18N = {
       open: "Abrir",
       calc_desc: "Calcula valor con varios votos por unidad.",
       trade_desc: "Compara dos ofertas lado a lado.",
+      scanner_desc: "Herramienta de escaneo — disponible pronto.",
+    },
+    scanner: {
+      kicker: "TD HUB",
+      title: "Scanner",
+      coming: "Próximamente",
+      wip: "En construcción",
+      live_build: "Obra en curso",
     },
     calc: {
       title: "Calculadora de valor",
@@ -64,6 +73,7 @@ export const I18N = {
       home: "Home",
       calc: "Calculator",
       trade: "Trade",
+      scanner: "Scanner",
       credits: "Credits",
     },
     main: {
@@ -77,6 +87,14 @@ export const I18N = {
       open: "Open",
       calc_desc: "Calculate value with multiple votes per unit.",
       trade_desc: "Compare both offers side by side.",
+      scanner_desc: "Scanning tool — coming soon.",
+    },
+    scanner: {
+      kicker: "TD HUB",
+      title: "Scanner",
+      coming: "Coming soon",
+      wip: "Under construction",
+      live_build: "Work in progress",
     },
     calc: {
       title: "Value calculator",
