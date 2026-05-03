@@ -10,8 +10,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install and Build
-        # Esto le dice al robot que entre en tu carpeta 'web'
-        working-directory: ./web
+        # Cambiamos esto para que no se pierda buscando carpetas repetidas
+        working-directory: ./
         run: |
           npm install
           npm run build
@@ -22,5 +22,5 @@ jobs:
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: web/dist
+          folder: dist
           branch: gh-pages
