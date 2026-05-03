@@ -207,8 +207,8 @@ export async function loadUnitsAndVotes() {
               sampleKeys,
               "\nValor en columna de enlace (ej. Nombre):",
               sampleName,
-              "\nPrimeros nombres en units (normalizados):",
-              Object.keys(voteValuesByNorm).slice(0, 8),
+              "\nPrimeras unidades (normalizado → nombre en units):",
+              Object.entries(voteValuesByNorm).slice(0, 10),
             );
           }
         }
