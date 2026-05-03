@@ -10,7 +10,7 @@ const ALIAS = {
   special: "special grade",
   "grado ascendido": "ascended grade",
   ascended: "ascended grade",
-  aniversary: "aniversary",
+  Aniversary: "aniversary",
 };
 
 const ORDER = {
