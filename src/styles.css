@@ -137,6 +137,12 @@ main.content {
   margin: 0 auto;
 }
 
+.foot-credits-link {
+  text-align: center;
+  margin: 2rem 0 0;
+  font-size: 0.95rem;
+}
+
 .home-card {
   width: 280px;
   background: var(--card);
@@ -182,7 +188,7 @@ main.content {
   margin-bottom: 1rem;
 }
 
-.toolbar input[type="search"] {
+.toolbar input[data-td-search] {
   flex: 1;
   min-width: 200px;
   max-width: 420px;
@@ -242,8 +248,8 @@ main.content {
   background: #160a24;
 }
 .unit-card.aniv {
-  border-color: #c52287;      
-  background: #05210a;
+  border-color: #e879b8;
+  background: #1f0a17;
 }
 .unit-card-head {
   display: flex;
