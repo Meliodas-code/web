@@ -128,6 +128,12 @@ main.content {
   font-size: clamp(1.5rem, 4vw, 2.2rem);
 }
 
+.hero-value-list-credit {
+  margin: 0.85rem auto 0;
+  max-width: 36rem;
+  line-height: 1.5;
+}
+
 .home-cards {
   display: flex;
   flex-wrap: wrap;
