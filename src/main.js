@@ -137,6 +137,7 @@ function cardRarityClass(rareza) {
     mythic: "mythic",
     "special grade": "sg",
     "ascended grade": "asc",
+    "Aniversary": "aniv",
   };
   return map[r] || "";
 }
