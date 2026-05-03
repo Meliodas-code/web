@@ -46,6 +46,20 @@ let scannerCountdownTimer = /** @type {ReturnType<typeof setInterval> | null} */
 /** Martes 5 may 2026, 20:00 hora peninsular (España, CEST). */
 const SCANNER_LAUNCH_AT_MS = Date.parse("2026-05-05T20:00:00+02:00");
 
+const TD_MOBILE_MQ =
+  typeof window !== "undefined" && window.matchMedia
+    ? window.matchMedia("(max-width: 640px)")
+    : null;
+
+function syncTdMobileAttr() {
+  document.documentElement.dataset.tdMobile =
+    TD_MOBILE_MQ?.matches ? "1" : "0";
+}
+
+if (TD_MOBILE_MQ) {
+  TD_MOBILE_MQ.addEventListener("change", syncTdMobileAttr);
+}
+
 function clearScannerCountdown() {
   if (scannerCountdownTimer) {
     clearInterval(scannerCountdownTimer);
@@ -998,6 +1012,7 @@ async function bootstrap() {
     return;
   }
 
+  syncTdMobileAttr();
   renderApp();
 
   window.addEventListener("hashchange", () => {
