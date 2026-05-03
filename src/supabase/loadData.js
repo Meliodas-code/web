@@ -113,27 +113,61 @@ export async function loadUnitsAndVotes() {
     const votesPath = `${url}/rest/v1/${encodeURIComponent(votesTable)}?select=*`;
     try {
       const rv = await fetch(votesPath, { headers });
-      if (rv.ok) {
-        const vr = await rv.json();
+      const rawBody = await rv.text();
+      if (!rv.ok) {
+        console.warn(
+          `[TD HUB] No se pudieron leer los votos desde la tabla "${votesTable}": ${rv.status} ${rawBody.slice(0, 280)}`,
+          "\n→ En Supabase: Authentication → Policies → la tabla debe permitir SELECT al rol anon (o desactiva RLS solo si es un proyecto público de solo lectura).",
+          "\n→ Comprueba también el nombre exacto de la tabla (variable VITE_VOTES_TABLE en web/.env).",
+        );
+      } else {
+        let vr;
+        try {
+          vr = JSON.parse(rawBody);
+        } catch {
+          console.warn(`[TD HUB] Respuesta no JSON al leer "${votesTable}".`);
+          vr = null;
+        }
         if (Array.isArray(vr)) {
           const configured = import.meta.env.VITE_VOTES_KEY_COLUMN?.trim();
           const keyCandidates = [];
           if (configured) keyCandidates.push(configured);
-          keyCandidates.push("unit_name", "nombre", "name");
+          keyCandidates.push(
+            "unit_name",
+            "nombre",
+            "Nombre",
+            "name",
+            "unit",
+            "unidad",
+          );
 
+          let merged = 0;
+          let skippedNoKey = 0;
           for (const vrrow of vr) {
             const keyCol = getFirstPresentKey(vrrow, keyCandidates);
-            if (!keyCol) continue;
+            if (!keyCol) {
+              skippedNoKey++;
+              continue;
+            }
             const rawName = vrrow[keyCol];
             if (!rawName) continue;
             const unit_name = voteValuesByNorm[normName(rawName)];
             if (!unit_name) continue;
             vote_values[unit_name] = mergeVoteRow(vote_values[unit_name], vrrow);
+            merged++;
+          }
+          if (vr.length && merged === 0) {
+            console.warn(
+              `[TD HUB] La tabla "${votesTable}" tiene ${vr.length} filas pero ninguna coincidió con unidades cargadas.`,
+              skippedNoKey
+                ? ` ${skippedNoKey} filas sin columna de nombre reconocida (usa nombre / Nombre / unit_name o VITE_VOTES_KEY_COLUMN).`
+                : " Revisa que el texto en la columna de nombre coincida con el campo nombre de units (mismo nombre, sin espacios raros).",
+            );
           }
         }
       }
-    } catch {
-      /* ignorar igual que Python */
+    } catch (e) {
+      console.warn(`[TD HUB] Error de red al leer "${votesTable}":`, e);
     }
   }
 
