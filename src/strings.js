@@ -42,10 +42,12 @@ export const I18N = {
       value: "Valor",
     },
     credits: {
-      title: "Créditos",
-      line1: "Web y lógica: derivada del proyecto TD HUB escritorio.",
-      line2:
-        'Datos: Supabase — configura tus claves públicas anon en archivo .env (ver plantilla ".env.example").',
+      title: "CRÉDITOS",
+      hecho_por: "Hecho por: @meliodas_000.",
+      idea: "Idea propuesta por: @Toropapita",
+      database: "Base de datos: @Toropapita",
+      note:
+        'Web: datos en Supabase — configura anon en archivo .env (ver ".env.example").',
     },
   },
   en: {
@@ -89,10 +91,12 @@ export const I18N = {
       value: "Value",
     },
     credits: {
-      title: "Credits",
-      line1: "Web app: ported from TD HUB desktop.",
-      line2:
-        'Data: Supabase — set anon keys in `.env` (see ".env.example").',
+      title: "CREDITS",
+      hecho_por: "Made by: @meliodas_000.",
+      idea: "Idea proposed by: @Toropapita",
+      database: "Database: @Toropapita",
+      note:
+        'Web data: Supabase — set anon keys in `.env` (see ".env.example").',
     },
   },
 };
