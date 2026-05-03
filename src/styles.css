@@ -208,9 +208,9 @@ main.content {
 .unit-card {
   background: var(--card);
   border-color: #c52287;
-  border: 2px solid var(--border);
+  border: #c52287;
   border-radius: 14px;
-  background: #05210a;
+  background: #12051a;
   padding: 0.5rem;
   display: flex;
   flex-direction: column;
