@@ -1,5 +1,5 @@
-/** Acepta voto1, Voto1, voto_1, voto-1, etc. */
-const VOTO_KEY = /^voto[_\s-]?(\d{1,2})$/i;
+/** Acepta voto1, Voto1, voto_1, voto-1, vote1, etc. */
+const VOTO_KEY = /^(?:voto|vote)[_\s-]?(\d{1,2})$/i;
 
 function normName(name) {
   return String(name || "")
@@ -34,6 +34,23 @@ function getFirstPresentKey(row, candidates) {
   for (const cand of candidates) {
     const fk = lowered[String(cand).trim().toLowerCase()];
     if (fk !== undefined) return fk;
+  }
+  return null;
+}
+
+/**
+ * Primera columna de enlace cuyo valor es texto no vacío (evita elegir
+ * `unit_name` u otras claves presentes pero null y saltarse `Nombre`).
+ * @returns {string | null}
+ */
+function getVoteRowUnitLabel(row, keyCandidates) {
+  for (const cand of keyCandidates) {
+    const col = getFirstPresentKey(row, [cand]);
+    if (!col) continue;
+    const raw = row[col];
+    if (raw === null || raw === undefined) continue;
+    const s = String(raw).trim();
+    if (s) return s;
   }
   return null;
 }
@@ -140,6 +157,13 @@ export async function loadUnitsAndVotes() {
     voteValuesByNorm[normName(name)] = name;
   }
 
+  /** @type {Record<string, string>} normalizado nombre_en → clave `nombre` en units */
+  const voteValuesByNormEn = {};
+  for (const u of units_out) {
+    const ne = String(u.nombre_en || "").trim();
+    if (ne) voteValuesByNormEn[normName(ne)] = u.nombre;
+  }
+
   if (votesTable) {
     const votesPath = `${url}/rest/v1/${encodeURIComponent(votesTable)}?select=*`;
     try {
@@ -167,24 +191,23 @@ export async function loadUnitsAndVotes() {
             "unit_name",
             "nombre",
             "Nombre",
+            "nombre_en",
             "name",
             "unit",
             "unidad",
           );
 
           let merged = 0;
-          let skippedNoKey = 0;
+          let skippedNoName = 0;
           for (const vrrow of vr) {
-            const keyCol = getFirstPresentKey(vrrow, keyCandidates);
-            if (!keyCol) {
-              skippedNoKey++;
+            const nameStr = getVoteRowUnitLabel(vrrow, keyCandidates);
+            if (!nameStr) {
+              skippedNoName++;
               continue;
             }
-            const rawName = vrrow[keyCol];
-            if (rawName === null || rawName === undefined) continue;
-            const nameStr = String(rawName).trim();
-            if (!nameStr) continue;
-            const unit_name = voteValuesByNorm[normName(nameStr)];
+            const nk = normName(nameStr);
+            const unit_name =
+              voteValuesByNorm[nk] || voteValuesByNormEn[nk] || null;
             if (!unit_name) continue;
             vote_values[unit_name] = mergeVoteRow(vote_values[unit_name], vrrow);
             merged++;
@@ -192,21 +215,17 @@ export async function loadUnitsAndVotes() {
           if (vr.length && merged === 0) {
             const sample = vr[0];
             const sampleKeys =
-              sample && typeof sample === "object" ? Object.keys(sample) : [];
-            const nameColSample = sample
-              ? getFirstPresentKey(sample, keyCandidates)
-              : null;
-            const sampleName =
-              nameColSample && sample ? sample[nameColSample] : undefined;
+              sample && typeof sample === "object" ? Object.keys(sample) : null;
+            const sampleLabel = sample ? getVoteRowUnitLabel(sample, keyCandidates) : null;
             console.warn(
               `[TD HUB] La tabla "${votesTable}" tiene ${vr.length} filas pero ninguna coincidió con unidades cargadas.`,
-              skippedNoKey
-                ? ` ${skippedNoKey} filas sin columna de nombre reconocida (usa nombre / Nombre / unit_name o VITE_VOTES_KEY_COLUMN).`
-                : " Revisa que el texto en la columna de nombre coincida EXACTAMENTE con el campo de nombre en units (mismos caracteres; la columna Nombre debe ser text, no int4).",
+              skippedNoName
+                ? ` ${skippedNoName} filas sin nombre usable (todas las columnas de enlace vacías o null; revisa Nombre / nombre / unit_name o VITE_VOTES_KEY_COLUMN).`
+                : " Revisa que el texto en la columna de nombre coincida con `nombre` o `nombre_en` en units (mismos caracteres tras normalizar espacios y mayúsculas).",
               "\nEjemplo primera fila — columnas:",
               sampleKeys,
-              "\nValor en columna de enlace (ej. Nombre):",
-              sampleName,
+              "\nNombre leído tras buscar en columnas de enlace:",
+              sampleLabel,
               "\nPrimeras unidades (normalizado → nombre en units):",
               Object.entries(voteValuesByNorm).slice(0, 10),
             );
