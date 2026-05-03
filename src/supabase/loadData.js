@@ -191,10 +191,13 @@ export async function loadUnitsAndVotes() {
           }
           if (vr.length && merged === 0) {
             const sample = vr[0];
-            const sampleKeys = sample && typeof sample === "object" ? Object.keys(sample) : [];
-            const sampleName = sample
-              ? sample[keyCandidates.find((c) => getFirstPresentKey(sample, [c]))]
-              : undefined;
+            const sampleKeys =
+              sample && typeof sample === "object" ? Object.keys(sample) : [];
+            const nameColSample = sample
+              ? getFirstPresentKey(sample, keyCandidates)
+              : null;
+            const sampleName =
+              nameColSample && sample ? sample[nameColSample] : undefined;
             console.warn(
               `[TD HUB] La tabla "${votesTable}" tiene ${vr.length} filas pero ninguna coincidió con unidades cargadas.`,
               skippedNoKey
