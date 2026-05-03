@@ -32,6 +32,10 @@ html {
   scroll-behavior: smooth;
 }
 
+html {
+  height: 100%;
+}
+
 html,
 body {
   margin: 0;
@@ -43,6 +47,9 @@ body {
 }
 
 body {
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
   background-color: var(--bg);
   background-image:
     radial-gradient(ellipse 100% 90% at 10% -15%, rgba(43, 140, 221, 0.14), transparent 52%),
@@ -64,15 +71,20 @@ a:hover {
 }
 
 #app {
-  min-height: 100vh;
+  height: 100%;
+  max-height: 100%;
+  max-height: 100dvh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-shell {
   display: flex;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -82,6 +94,9 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: linear-gradient(
     185deg,
     rgba(26, 28, 36, 0.92) 0%,
@@ -176,15 +191,18 @@ a:hover {
 main.content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   padding: clamp(1rem, 2.5vw, 1.5rem) clamp(1.1rem, 3vw, 2rem)
     clamp(1.75rem, 4vw, 2.75rem);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .view-home,
 .view-calc,
 .view-trade,
 .view-credits {
+  min-height: 0;
   animation: fade-in-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
@@ -463,6 +481,34 @@ main.content {
   transform: scale(0.98);
 }
 
+.toolbar-btn-calc-clear {
+  flex: 0 1 auto;
+  padding: 0.62rem 1.05rem;
+  border-radius: 11px;
+  border: 1px solid rgba(43, 140, 221, 0.38);
+  background: rgba(43, 140, 221, 0.1);
+  color: #d6ecff;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.87rem;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(43, 140, 221, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: filter var(--transition-fast), transform var(--transition-fast),
+    border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.toolbar-btn-calc-clear:hover {
+  filter: brightness(1.06);
+  background: rgba(43, 140, 221, 0.16);
+  border-color: rgba(43, 140, 221, 0.5);
+}
+
+.toolbar-btn-calc-clear:active {
+  transform: scale(0.98);
+}
+
 .total-pill {
   font-weight: 800;
   font-size: 0.95rem;
@@ -738,6 +784,16 @@ main.content {
   transform: scale(0.96);
 }
 
+.trade-didactic-hint {
+  margin: -0.15rem 0 1rem;
+  padding: 0.65rem 0.95rem;
+  font-size: 0.885rem;
+  line-height: 1.52;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .trade-shell {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -748,6 +804,8 @@ main.content {
 @media (max-width: 760px) {
   .app-shell {
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
 
   .sidebar {
@@ -756,10 +814,19 @@ main.content {
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
+    flex-shrink: 0;
+    max-height: none;
+    overflow-y: visible;
     border-right: none;
     border-bottom: 1px solid var(--border-strong);
     box-shadow: 0 4px 28px rgba(0, 0, 0, 0.2);
     padding-bottom: 0.85rem;
+  }
+
+  main.content {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
   }
 
   .sidebar h1 {
@@ -789,6 +856,11 @@ main.content {
 }
 
 .trade-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(620px, calc(100vh - 15rem));
+  max-height: min(620px, calc(100dvh - 15rem));
   background: linear-gradient(
     178deg,
     rgba(255, 255, 255, 0.04),
@@ -797,18 +869,140 @@ main.content {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0.65rem 0.55rem;
-  max-height: min(72vh, 640px);
-  overflow-y: auto;
   box-shadow: var(--shadow-card);
+}
+
+.trade-inventory {
+  flex-shrink: 0;
+  margin-bottom: 0.55rem;
+  padding: 0.48rem 0.5rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.trade-inventory--left {
+  border-color: rgba(126, 200, 251, 0.22);
+  box-shadow: inset 0 0 28px rgba(59, 130, 246, 0.06);
+}
+
+.trade-inventory--right {
+  border-color: rgba(250, 166, 154, 0.22);
+  box-shadow: inset 0 0 28px rgba(248, 113, 113, 0.05);
+}
+
+.trade-inventory-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.42rem;
+  color: var(--muted);
+}
+
+.trade-col.left .trade-inventory-label {
+  color: #8ec9f5;
+}
+
+.trade-col.right .trade-inventory-label {
+  color: #f5b8ad;
+}
+
+.trade-inventory-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  min-height: 62px;
+  max-height: 124px;
+  overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
-.trade-col::-webkit-scrollbar {
+.trade-inventory-strip::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.trade-inventory-strip::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+}
+
+.trade-inventory-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.42;
+}
+
+.trade-inv-slot {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 11px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.trade-inv-slot:hover {
+  transform: scale(1.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.trade-inv-slot-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+}
+
+.trade-inv-slot-qty {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  min-width: 1.35rem;
+  padding: 0.1rem 0.28rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #fff;
+  border-radius: 6px;
+  background: rgba(43, 140, 221, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  line-height: 1.15;
+  text-align: center;
+}
+
+.trade-col.right .trade-inv-slot-qty {
+  background: rgba(232, 93, 84, 0.92);
+}
+
+.trade-picker-caption {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.35rem;
+  flex-shrink: 0;
+}
+
+.trade-picker {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.trade-picker::-webkit-scrollbar {
   width: 8px;
 }
 
-.trade-col::-webkit-scrollbar-thumb {
+.trade-picker::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.14);
   border-radius: 8px;
 }
@@ -1042,7 +1236,8 @@ button:focus-visible,
 .nav-btn:focus-visible,
 .controls button.round:focus-visible,
 .lang-row button:focus-visible,
-.toolbar-btn-clear:focus-visible {
+.toolbar-btn-clear:focus-visible,
+.toolbar-btn-calc-clear:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(43, 140, 221, 0.45);
 }
