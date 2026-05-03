@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  // Esto arregla los errores 404
+  // Esto arregla los errores 404 de JS y CSS
   base: "/web/", 
   root: ".",
   publicDir: "public",
