@@ -12,6 +12,9 @@ export const I18N = {
       bienvenida: "BIENVENIDO A TD HUB",
       home_subtitle:
         "Usa datos en la nube. Despliegue gratis con GitHub Pages u otro hosting estático.",
+      list_values_thanks:
+        "Agradecemos al equipo de Sorcerer TD Value List por los valores de referencia que hacen posible esta calculadora.",
+      official_list_link: "Documento oficial de la lista (Google Sheets)",
       home_badge: "Versión web",
       open: "Abrir",
       calc_desc: "Calcula valor con varios votos por unidad.",
@@ -46,8 +49,6 @@ export const I18N = {
       hecho_por: "Hecho por: @meliodas_000.",
       idea: "Idea propuesta por: @Toropapita",
       database: "Base de datos: @Toropapita",
-      note:
-        'Web: datos en Supabase — configura anon en archivo .env (ver ".env.example").',
     },
   },
   en: {
@@ -61,6 +62,9 @@ export const I18N = {
       bienvenida: "WELCOME TO TD HUB",
       home_subtitle:
         "Cloud-backed data. Free deploy on GitHub Pages or any static host.",
+      list_values_thanks:
+        "Thanks to the Sorcerer TD Value List team for the reference values that power this calculator.",
+      official_list_link: "Official value list spreadsheet (Google Sheets)",
       home_badge: "Web build",
       open: "Open",
       calc_desc: "Calculate value with multiple votes per unit.",
@@ -95,8 +99,6 @@ export const I18N = {
       hecho_por: "Made by: @meliodas_000.",
       idea: "Idea proposed by: @Toropapita",
       database: "Database: @Toropapita",
-      note:
-        'Web data: Supabase — set anon keys in `.env` (see ".env.example").',
     },
   },
 };
