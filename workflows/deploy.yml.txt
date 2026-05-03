@@ -8,15 +8,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Install and Build
+        # Usamos 'working-directory' para decirle al robot exactamente dónde entrar
+        working-directory: ./web
         run: |
           npm install
           npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
+<<<<<<< HEAD
           folder: dist
           branch: gh-pages
+=======
+          folder: web/dist
+          branch: gh-pages
+>>>>>>> 0832bc796e19a12e854cb6393d6e8f9a77147d74
