@@ -3,6 +3,10 @@ import { loadUnitsAndVotes } from "./supabase/loadData.js";
 import { rarityRank, normalizeRarity } from "./rarity.js";
 import { t } from "./strings.js";
 
+/** Lista de valores oficial (Sorcerer TD Value list). */
+const OFFICIAL_VALUE_LIST_URL =
+  "https://docs.google.com/spreadsheets/d/1--hVDdfHVSGLI1MF_Cmo0Te1Ir71KUxqnaqRX_CRCyI/htmlview?gid=0&pru=AAABnNPEMFQ*iMq033usqNrkyrEjGY0jeQ#gid=0";
+
 /** @typedef {{nombre:string,nombre_en:string,valor:number,imagen:string,rareza:string}} Unit */
 
 /** @type {Unit[]} */
@@ -171,9 +175,7 @@ function filterSortUnits(q) {
     const ra = rarityRank(a.rareza);
     const rb = rarityRank(b.rareza);
     if (ra !== rb) return ra - rb;
-    const n1 = unitDisplayName(a);
-    const n2 = unitDisplayName(b);
-    return n1.localeCompare(n2, undefined, { sensitivity: "base" });
+    return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
   });
 
   if (!query) return list;
@@ -587,6 +589,23 @@ function buildHomeView() {
       <p class="muted">${escapeHtml(t(lang, "main.home_subtitle"))}</p>
       <p><span class="badge" style="display:inline-block;margin-top:8px">${escapeHtml(t(lang, "main.home_badge"))}</span></p>
     </div>`;
+  const hero = d.querySelector(".hero");
+  if (hero) {
+    const thanks = document.createElement("p");
+    thanks.className = "muted hero-value-list-credit";
+    thanks.append(
+      document.createTextNode(`${t(lang, "main.list_values_thanks")} `),
+    );
+    const listLink = document.createElement("a");
+    listLink.href = OFFICIAL_VALUE_LIST_URL;
+    listLink.target = "_blank";
+    listLink.rel = "noopener noreferrer";
+    listLink.textContent = t(lang, "main.official_list_link");
+    thanks.appendChild(listLink);
+    const badgeP = hero.querySelector("p:last-of-type");
+    if (badgeP?.querySelector(".badge")) hero.insertBefore(thanks, badgeP);
+    else hero.appendChild(thanks);
+  }
   const grid = document.createElement("div");
   grid.className = "home-cards";
 
@@ -629,8 +648,7 @@ function buildCreditsView() {
     `<h2 style="margin-top:0">${escapeHtml(t(lang, "credits.title"))}</h2>
     <p>${escapeHtml(t(lang, "credits.hecho_por"))}</p>
     <p>${escapeHtml(t(lang, "credits.idea"))}</p>
-    <p>${escapeHtml(t(lang, "credits.database"))}</p>
-    <p class="muted" style="margin-top:1rem">${escapeHtml(t(lang, "credits.note"))}</p>`;
+    <p>${escapeHtml(t(lang, "credits.database"))}</p>`;
   return d;
 }
 
