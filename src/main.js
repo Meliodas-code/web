@@ -322,6 +322,7 @@ function tradeVoteIconSrc(side, nombre) {
 function buildCalcView() {
   const q = lastSearchCalc;
   const wrap = document.createElement("div");
+  wrap.className = "view-calc";
 
   const tb = document.createElement("div");
   tb.className = "toolbar";
@@ -504,6 +505,7 @@ function buildTradeHalf(sideName, filtered) {
 function buildTradeView() {
   const q = lastSearchTrade;
   const wrap = document.createElement("div");
+  wrap.className = "view-trade";
 
   const tb = document.createElement("div");
   tb.className = "toolbar";
@@ -523,10 +525,7 @@ function buildTradeView() {
 
   const clearBtn = document.createElement("button");
   clearBtn.type = "button";
-  clearBtn.className = "nav-btn active";
-  clearBtn.style.flex = "0 1 auto";
-  clearBtn.style.background = "#2a1515";
-  clearBtn.style.color = "#fff";
+  clearBtn.className = "toolbar-btn-clear";
   clearBtn.textContent = t(lang, "trade.clear");
   clearBtn.onclick = () => {
     for (const k of Object.keys(tradeLeftCounts)) delete tradeLeftCounts[k];
@@ -583,6 +582,7 @@ function buildTradeView() {
 
 function buildHomeView() {
   const d = document.createElement("div");
+  d.className = "view-home";
   d.innerHTML = `
     <div class="hero">
       <h2>${escapeHtml(t(lang, "main.bienvenida"))}</h2>
@@ -643,7 +643,7 @@ function escapeHtml(s) {
 
 function buildCreditsView() {
   const d = document.createElement("div");
-  d.className = "credits-box";
+  d.className = "credits-box view-credits";
   d.innerHTML =
     `<h2 style="margin-top:0">${escapeHtml(t(lang, "credits.title"))}</h2>
     <p>${escapeHtml(t(lang, "credits.hecho_por"))}</p>
