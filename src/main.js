@@ -308,6 +308,66 @@ function openVoteSheet(mode, unit, side) {
   voteDialogEl.showModal();
 }
 
+/** Inventario ordenado por nombre canónico (estable ante cambio de idioma). */
+function tradeInventorySlots(sideName) {
+  const out = [];
+  for (const u of units) {
+    const qty = tradeSumForUnit(sideName, u.nombre);
+    if (qty <= 0) continue;
+    out.push({ unit: u, qty });
+  }
+  out.sort((a, b) =>
+    a.unit.nombre.localeCompare(b.unit.nombre, "es", { sensitivity: "base" }),
+  );
+  return out;
+}
+
+function buildTradeInventory(sideName) {
+  const section = document.createElement("section");
+  section.className = `trade-inventory trade-inventory--${sideName}`;
+
+  const label = document.createElement("div");
+  label.className = "trade-inventory-label";
+  label.textContent =
+    sideName === "left"
+      ? t(lang, "trade.stock_you")
+      : t(lang, "trade.stock_opponent");
+
+  const strip = document.createElement("div");
+  strip.className = "trade-inventory-strip";
+
+  const slots = tradeInventorySlots(sideName);
+  if (slots.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "trade-inventory-empty muted";
+    empty.textContent = t(lang, "trade.stock_empty");
+    strip.appendChild(empty);
+  } else {
+    for (const { unit: u, qty } of slots) {
+      const slot = document.createElement("div");
+      slot.className = "trade-inv-slot";
+      slot.title = unitDisplayName(u);
+
+      const img = document.createElement("img");
+      img.className = "trade-inv-slot-img";
+      img.src = u.imagen ? assetUrl(u.imagen) : "";
+      img.alt = "";
+
+      const qb = document.createElement("span");
+      qb.className = "trade-inv-slot-qty";
+      qb.textContent = qty >= 100 ? "99+" : String(qty);
+
+      slot.appendChild(img);
+      slot.appendChild(qb);
+      strip.appendChild(slot);
+    }
+  }
+
+  section.appendChild(label);
+  section.appendChild(strip);
+  return section;
+}
+
 function calcVoteIconSrc(nombre) {
   const vk = calcLastVote[nombre];
   return vk ? assetUrl(`assets/votos/${vk}.png`) : assetUrl("assets/vote_icon.png");
@@ -344,8 +404,19 @@ function buildCalcView() {
   pill.className = "total-pill";
   pill.textContent = `${t(lang, "calc.total")}: ${calcGrandTotal()}`;
 
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "toolbar-btn-calc-clear";
+  clearBtn.textContent = t(lang, "calc.clear_all");
+  clearBtn.onclick = () => {
+    for (const k of Object.keys(calcSelections)) delete calcSelections[k];
+    for (const k of Object.keys(calcLastVote)) delete calcLastVote[k];
+    renderApp();
+  };
+
   tb.appendChild(inp);
   tb.appendChild(pill);
+  tb.appendChild(clearBtn);
 
   const grid = document.createElement("div");
   grid.className = "unit-grid";
@@ -428,6 +499,16 @@ function buildTradeHalf(sideName, filtered) {
     sideName === "left" ? t(lang, "trade.left") : t(lang, "trade.right");
   col.appendChild(h);
 
+  col.appendChild(buildTradeInventory(sideName));
+
+  const cap = document.createElement("div");
+  cap.className = "trade-picker-caption muted";
+  cap.textContent = t(lang, "trade.picker_caption");
+  col.appendChild(cap);
+
+  const listWrap = document.createElement("div");
+  listWrap.className = "trade-picker";
+
   const cmap =
     sideName === "left" ? tradeLeftCounts : tradeRightCounts;
   const lmap =
@@ -497,8 +578,9 @@ function buildTradeHalf(sideName, filtered) {
     row.appendChild(meta);
     row.appendChild(vt);
     row.appendChild(ctl);
-    col.appendChild(row);
+    listWrap.appendChild(row);
   }
+  col.appendChild(listWrap);
   return col;
 }
 
@@ -567,6 +649,10 @@ function buildTradeView() {
   scoreBox.appendChild(big);
   scoreBox.appendChild(sub);
 
+  const hint = document.createElement("p");
+  hint.className = "trade-didactic-hint muted";
+  hint.textContent = t(lang, "trade.didactic_intro");
+
   const grid = document.createElement("div");
   grid.className = "trade-shell";
   const filt = filterSortUnits(q);
@@ -576,6 +662,7 @@ function buildTradeView() {
 
   wrap.appendChild(tb);
   wrap.appendChild(scoreBox);
+  wrap.appendChild(hint);
   wrap.appendChild(grid);
   return wrap;
 }
@@ -668,6 +755,7 @@ function navigate(hash) {
 function renderApp() {
   const root = document.getElementById("app");
   if (!root) return;
+  root.style.overflow = "";
 
   root.innerHTML = "";
 
@@ -742,6 +830,7 @@ async function bootstrap() {
     units = loaded.units;
     vote_values = loaded.vote_values;
   } catch (e) {
+    root.style.overflowY = "auto";
     root.innerHTML = "";
     const b = document.createElement("div");
     b.style.padding = "24px";
