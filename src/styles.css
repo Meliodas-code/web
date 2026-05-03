@@ -239,7 +239,10 @@ main.content {
   border-color: #a855f7;
   background: #160a24;
 }
-
+.unit-card.aniv {
+  border-color: #c52287;      
+  background: #05210a;
+}
 .unit-card-head {
   display: flex;
   justify-content: space-between;
