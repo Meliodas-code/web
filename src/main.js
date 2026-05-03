@@ -33,6 +33,29 @@ let modalCtx = { mode: "calc", unitName: "", side: "left", unit: null };
 let lastSearchCalc = "";
 let lastSearchTrade = "";
 
+/** Tras escribir en el buscador, re-render quita foco — lo restauramos solo en ese caso. */
+let pendingToolbarFocusRoute = /** @type {null | "calc" | "trade"} */ (null);
+
+function maybeRefocusToolbarSearch(route) {
+  if (pendingToolbarFocusRoute !== route) return;
+  pendingToolbarFocusRoute = null;
+  requestAnimationFrame(() => {
+    const rootEl = document.getElementById("app");
+    const el = /** @type {HTMLInputElement | null} */ (
+      rootEl?.querySelector(`main.content .toolbar input[data-td-search="${route}"]`) ??
+      null
+    );
+    if (!el) return;
+    el.focus();
+    const len = el.value?.length ?? 0;
+    try {
+      el.setSelectionRange(len, len);
+    } catch (_) {
+      /* algunos navegadores con input no estándar */
+    }
+  });
+}
+
 function unitDisplayName(u) {
   return lang === "en" ? u.nombre_en || u.nombre : u.nombre;
 }
@@ -137,8 +160,7 @@ function cardRarityClass(rareza) {
     mythic: "mythic",
     "special grade": "sg",
     "ascended grade": "asc",
-    "Aniversary": "aniv",
-    Aniversary: "aniv",
+    aniversary: "aniv",
   };
   return map[r] || "";
 }
@@ -155,10 +177,13 @@ function filterSortUnits(q) {
   });
 
   if (!query) return list;
+  const tokens = query.split(/\s+/).filter(Boolean);
   return list.filter((u) => {
     const n_es = u.nombre.toLowerCase();
     const n_en = (u.nombre_en || "").toLowerCase();
-    return n_es.includes(query) || n_en.includes(query);
+    const every = /** @type {(s:string)=>boolean} */ (s) =>
+      tokens.every((tok) => s.includes(tok));
+    return every(n_es) || every(n_en);
   });
 }
 
@@ -299,12 +324,16 @@ function buildCalcView() {
   const tb = document.createElement("div");
   tb.className = "toolbar";
   const inp = document.createElement("input");
-  inp.type = "search";
+  inp.type = "text";
+  inp.setAttribute("data-td-search", "calc");
   inp.placeholder = t(lang, "calc.search");
   inp.value = q;
   inp.autocomplete = "off";
+  inp.spellcheck = false;
+  inp.inputMode = "search";
   inp.addEventListener("input", () => {
     lastSearchCalc = inp.value;
+    pendingToolbarFocusRoute = "calc";
     renderApp();
   });
 
@@ -477,12 +506,16 @@ function buildTradeView() {
   const tb = document.createElement("div");
   tb.className = "toolbar";
   const inp = document.createElement("input");
-  inp.type = "search";
+  inp.type = "text";
+  inp.setAttribute("data-td-search", "trade");
   inp.placeholder = t(lang, "trade.search");
   inp.value = q;
   inp.autocomplete = "off";
+  inp.spellcheck = false;
+  inp.inputMode = "search";
   inp.addEventListener("input", () => {
     lastSearchTrade = inp.value;
+    pendingToolbarFocusRoute = "trade";
     renderApp();
   });
 
@@ -571,7 +604,14 @@ function buildHomeView() {
   card("", t(lang, "nav.calc"), t(lang, "main.calc_desc"), "#/calc");
   card("trade", t(lang, "nav.trade"), t(lang, "main.trade_desc"), "#/trade");
 
+  const foot = document.createElement("p");
+  foot.className = "muted foot-credits-link";
+  const a = document.createElement("a");
+  a.href = "#/credits";
+  a.textContent = `→ ${t(lang, "nav.credits")}`;
+  foot.appendChild(a);
   d.appendChild(grid);
+  d.appendChild(foot);
   return d;
 }
 
@@ -587,8 +627,10 @@ function buildCreditsView() {
   d.className = "credits-box";
   d.innerHTML =
     `<h2 style="margin-top:0">${escapeHtml(t(lang, "credits.title"))}</h2>
-    <p>${escapeHtml(t(lang, "credits.line1"))}</p>
-    <p class="muted">${escapeHtml(t(lang, "credits.line2"))}</p>`;
+    <p>${escapeHtml(t(lang, "credits.hecho_por"))}</p>
+    <p>${escapeHtml(t(lang, "credits.idea"))}</p>
+    <p>${escapeHtml(t(lang, "credits.database"))}</p>
+    <p class="muted" style="margin-top:1rem">${escapeHtml(t(lang, "credits.note"))}</p>`;
   return d;
 }
 
@@ -659,6 +701,9 @@ function renderApp() {
   shell.appendChild(side);
   shell.appendChild(main);
   root.appendChild(shell);
+
+  if (route === "calc") maybeRefocusToolbarSearch("calc");
+  else if (route === "trade") maybeRefocusToolbarSearch("trade");
 }
 
 function setLang(newLang) {
