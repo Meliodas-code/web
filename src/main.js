@@ -308,17 +308,32 @@ function openVoteSheet(mode, unit, side) {
   voteDialogEl.showModal();
 }
 
-/** Inventario ordenado por nombre canónico (estable ante cambio de idioma). */
-function tradeInventorySlots(sideName) {
+/**
+ * Una entrada por (unidad, tipo de voto) con cantidad > 0.
+ * Orden estable: nombre ES, luego número de voto.
+ */
+function tradeInventoryEntries(sideName) {
+  const cmap = sideName === "left" ? tradeLeftCounts : tradeRightCounts;
   const out = [];
   for (const u of units) {
-    const qty = tradeSumForUnit(sideName, u.nombre);
-    if (qty <= 0) continue;
-    out.push({ unit: u, qty });
+    const m = cmap[u.nombre];
+    if (!m) continue;
+    for (let i = 1; i <= 13; i++) {
+      const voteKey = `voto${i}`;
+      const qty = m[voteKey] || 0;
+      if (qty <= 0) continue;
+      out.push({ unit: u, voteKey, qty });
+    }
   }
-  out.sort((a, b) =>
-    a.unit.nombre.localeCompare(b.unit.nombre, "es", { sensitivity: "base" }),
-  );
+  out.sort((a, b) => {
+    const n = a.unit.nombre.localeCompare(b.unit.nombre, "es", {
+      sensitivity: "base",
+    });
+    if (n !== 0) return n;
+    const ai = Number(String(a.voteKey).replace(/\D/g, "")) || 0;
+    const bi = Number(String(b.voteKey).replace(/\D/g, "")) || 0;
+    return ai - bi;
+  });
   return out;
 }
 
@@ -336,28 +351,46 @@ function buildTradeInventory(sideName) {
   const strip = document.createElement("div");
   strip.className = "trade-inventory-strip";
 
-  const slots = tradeInventorySlots(sideName);
-  if (slots.length === 0) {
+  const entries = tradeInventoryEntries(sideName);
+  if (entries.length === 0) {
     const empty = document.createElement("p");
     empty.className = "trade-inventory-empty muted";
     empty.textContent = t(lang, "trade.stock_empty");
     strip.appendChild(empty);
   } else {
-    for (const { unit: u, qty } of slots) {
+    for (const { unit: u, voteKey, qty } of entries) {
       const slot = document.createElement("div");
       slot.className = "trade-inv-slot";
-      slot.title = unitDisplayName(u);
+      const vi = Number(String(voteKey).replace(/\D/g, "")) || 0;
+      slot.title =
+        vi > 0
+          ? `${unitDisplayName(u)} · V${vi}`
+          : unitDisplayName(u);
 
       const img = document.createElement("img");
       img.className = "trade-inv-slot-img";
       img.src = u.imagen ? assetUrl(u.imagen) : "";
       img.alt = "";
 
+      const vimg = document.createElement("img");
+      vimg.className = "trade-inv-slot-vote";
+      vimg.src = assetUrl(`assets/votos/${voteKey}.png`);
+      vimg.alt = voteKey;
+
       const qb = document.createElement("span");
       qb.className = "trade-inv-slot-qty";
       qb.textContent = qty >= 100 ? "99+" : String(qty);
 
+      vimg.onerror = () => {
+        vimg.remove();
+        const fb = document.createElement("span");
+        fb.className = "trade-inv-slot-vote trade-inv-slot-vote--fallback";
+        fb.textContent = vi > 0 ? String(vi) : "?";
+        slot.insertBefore(fb, qb);
+      };
+
       slot.appendChild(img);
+      slot.appendChild(vimg);
       slot.appendChild(qb);
       strip.appendChild(slot);
     }
