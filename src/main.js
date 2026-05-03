@@ -138,6 +138,7 @@ function cardRarityClass(rareza) {
     "special grade": "sg",
     "ascended grade": "asc",
     "Aniversary": "aniv",
+    Aniversary: "aniv",
   };
   return map[r] || "";
 }
