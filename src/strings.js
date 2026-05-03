@@ -24,6 +24,7 @@ export const I18N = {
       title: "Calculadora de valor",
       search: "Buscar unidad…",
       total: "Valor total",
+      clear_all: "Limpiar todo",
       reopen: "Elegir votos…",
       close: "Cerrar",
     },
@@ -31,6 +32,13 @@ export const I18N = {
       title: "Comparador de trade",
       search: "Buscar…",
       clear: "Limpiar todo",
+      didactic_intro:
+        "Arriba en cada columna verás el inventario que vas formando en el trade. Abajo está el buscador y los controles para añadir o quitar unidades.",
+      stock_you: "Tu inventario en el trade",
+      stock_opponent: "Inventario del rival",
+      stock_empty:
+        "Aún sin unidades. Pulsa + en las filas de abajo para incorporarlas a este lado.",
+      picker_caption: "Unidades disponibles · + / −",
       left: "Tu oferta",
       right: "Oferta rival",
       left_tot: "Total izquierda",
@@ -74,6 +82,7 @@ export const I18N = {
       title: "Value calculator",
       search: "Search unit…",
       total: "Total value",
+      clear_all: "Clear all",
       reopen: "Choose votes…",
       close: "Close",
     },
@@ -81,6 +90,13 @@ export const I18N = {
       title: "Trade comparison",
       search: "Search…",
       clear: "Clear all",
+      didactic_intro:
+        "Each column shows the inventory you’re building for that side. Below you can search and use + / − to add units to the trade.",
+      stock_you: "Your inventory in this trade",
+      stock_opponent: "Opponent’s inventory",
+      stock_empty:
+        "Nothing here yet — use + in the rows below to add units to this side.",
+      picker_caption: "Available units · + / −",
       left: "Your offer",
       right: "Opponent offer",
       left_tot: "Left total",
