@@ -1,9 +1,26 @@
-const VOTO_KEY = /^voto(\d+)$/i;
+/** Acepta voto1, Voto1, voto_1, voto-1, etc. */
+const VOTO_KEY = /^voto[_\s-]?(\d{1,2})$/i;
 
 function normName(name) {
   return String(name || "")
     .trim()
-    .toLowerCase();
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("es")
+    .normalize("NFC");
+}
+
+/** @returns {number | null} */
+function asVoteNumber(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeRowKey(k) {
+  return String(k || "")
+    .trim()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
 }
 
 function getFirstPresentKey(row, candidates) {
@@ -23,9 +40,10 @@ function getFirstPresentKey(row, candidates) {
 
 function votesFromUnitRow(row, baseVal) {
   const votes = {};
-  for (const [k, v] of Object.entries(row || {})) {
-    const m = VOTO_KEY.exec(String(k).trim());
-    if (m && v != null && v !== "") votes[`voto${parseInt(m[1], 10)}`] = Number(v);
+  for (const [k0, v] of Object.entries(row || {})) {
+    const m = VOTO_KEY.exec(normalizeRowKey(k0));
+    const n = asVoteNumber(v);
+    if (m && n !== null) votes[`voto${parseInt(m[1], 10)}`] = n;
   }
   const b = Number(baseVal) || 0;
   for (let i = 1; i < 13; i++) {
@@ -39,10 +57,12 @@ function votesFromUnitRow(row, baseVal) {
 
 function mergeVoteRow(existing, voteRow) {
   const out = { ...(existing || {}) };
-  for (const [k, v] of Object.entries(voteRow || {})) {
-    if (k === "unit_name" || k === "id") continue;
-    const m = VOTO_KEY.exec(String(k).trim());
-    if (m && v != null && v !== "") out[`voto${parseInt(m[1], 10)}`] = Number(v);
+  for (const [k0, v] of Object.entries(voteRow || {})) {
+    if (k0 === "unit_name" || k0 === "id") continue;
+    const k = normalizeRowKey(k0);
+    const m = VOTO_KEY.exec(k);
+    const n = asVoteNumber(v);
+    if (m && n !== null) out[`voto${parseInt(m[1], 10)}`] = n;
   }
   const base = out.voto2 !== undefined ? out.voto2 : out.voto1 !== undefined ? out.voto1 : 0;
   for (let i = 1; i < 13; i++) {
@@ -90,8 +110,19 @@ export async function loadUnitsAndVotes() {
   /** @type {Array<{nombre:string,nombre_en:string,valor:number,imagen:string,rareza:string}>} */
   const units_out = [];
 
+  const unitNameCol = getFirstPresentKey(rows[0] || {}, [
+    import.meta.env.VITE_UNITS_NAME_COLUMN?.trim(),
+    "nombre",
+    "Nombre",
+    "name",
+    "unit_name",
+  ].filter(Boolean));
+
   for (const row of rows) {
-    const nombre = row.nombre;
+    const nombreRaw =
+      unitNameCol != null ? row[unitNameCol] : row.nombre ?? row.Nombre;
+    if (nombreRaw === null || nombreRaw === undefined) continue;
+    const nombre = String(nombreRaw).trim();
     if (!nombre) continue;
     const valor = row.valor != null ? Number(row.valor) : 0;
     units_out.push({
@@ -150,18 +181,31 @@ export async function loadUnitsAndVotes() {
               continue;
             }
             const rawName = vrrow[keyCol];
-            if (!rawName) continue;
-            const unit_name = voteValuesByNorm[normName(rawName)];
+            if (rawName === null || rawName === undefined) continue;
+            const nameStr = String(rawName).trim();
+            if (!nameStr) continue;
+            const unit_name = voteValuesByNorm[normName(nameStr)];
             if (!unit_name) continue;
             vote_values[unit_name] = mergeVoteRow(vote_values[unit_name], vrrow);
             merged++;
           }
           if (vr.length && merged === 0) {
+            const sample = vr[0];
+            const sampleKeys = sample && typeof sample === "object" ? Object.keys(sample) : [];
+            const sampleName = sample
+              ? sample[keyCandidates.find((c) => getFirstPresentKey(sample, [c]))]
+              : undefined;
             console.warn(
               `[TD HUB] La tabla "${votesTable}" tiene ${vr.length} filas pero ninguna coincidió con unidades cargadas.`,
               skippedNoKey
                 ? ` ${skippedNoKey} filas sin columna de nombre reconocida (usa nombre / Nombre / unit_name o VITE_VOTES_KEY_COLUMN).`
-                : " Revisa que el texto en la columna de nombre coincida con el campo nombre de units (mismo nombre, sin espacios raros).",
+                : " Revisa que el texto en la columna de nombre coincida EXACTAMENTE con el campo de nombre en units (mismos caracteres; la columna Nombre debe ser text, no int4).",
+              "\nEjemplo primera fila — columnas:",
+              sampleKeys,
+              "\nValor en columna de enlace (ej. Nombre):",
+              sampleName,
+              "\nPrimeros nombres en units (normalizados):",
+              Object.keys(voteValuesByNorm).slice(0, 8),
             );
           }
         }
