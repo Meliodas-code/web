@@ -1313,7 +1313,7 @@ html[data-td-mobile="1"] .trade-inv-slot-vote {
 .credits-box {
   max-width: 720px;
   margin: clamp(1.5rem, 4vw, 2.5rem) auto;
-  padding: 1.6rem 1.5rem;
+  padding: 1.25rem 1.25rem 1.1rem;
   background: linear-gradient(
       175deg,
       rgba(255, 255, 255, 0.05),
@@ -1331,11 +1331,25 @@ html[data-td-mobile="1"] .trade-inv-slot-vote {
   font-weight: 800;
   letter-spacing: 0.04em;
   font-size: 1.35rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.55rem;
 }
 
 .credits-box p {
-  margin: 0.55rem 0;
+  margin: 0.35rem 0;
+}
+
+.credits-badge {
+  display: inline-flex;
+  margin: 0.25rem 0 0.55rem;
+  padding: 0.28rem 0.62rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #cfe9ff;
+  border: 1px solid rgba(43, 140, 221, 0.38);
+  background: rgba(43, 140, 221, 0.12);
 }
 
 .credits-grid {
@@ -1432,6 +1446,11 @@ html[data-td-mobile="1"] .trade-inv-slot-vote {
   font-weight: 700;
   border: 1px solid var(--border-strong);
   background: rgba(255, 255, 255, 0.06);
+}
+
+.credits-foot {
+  margin: 0.72rem 0 0.1rem;
+  font-size: 0.82rem;
 }
 
 :focus-visible {
