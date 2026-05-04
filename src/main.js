@@ -996,13 +996,29 @@ function scannerVectorFromCrop(img, crop, centerRatio = 1) {
 
 function scannerFeatureFromImageData(raw, width, height) {
   const gray = new Float32Array(width * height);
+  const bins = new Uint32Array(64);
+  const rgb = new Float32Array(width * height * 3);
   for (let i = 0, p = 0; i < raw.length; i += 4, p += 1) {
     const r = raw[i];
     const g = raw[i + 1];
     const b = raw[i + 2];
     const a = raw[i + 3] / 255;
+    rgb[p * 3] = r / 255;
+    rgb[p * 3 + 1] = g / 255;
+    rgb[p * 3 + 2] = b / 255;
+    const rb = r >> 6;
+    const gb = g >> 6;
+    const bb = b >> 6;
+    bins[(rb << 4) | (gb << 2) | bb] += 1;
     gray[p] = ((0.299 * r + 0.587 * g + 0.114 * b) / 255) * a;
   }
+  let maxBin = 0;
+  for (let i = 1; i < bins.length; i++) {
+    if (bins[i] > bins[maxBin]) maxBin = i;
+  }
+  const bgR = ((maxBin >> 4) & 0b11) / 3;
+  const bgG = ((maxBin >> 2) & 0b11) / 3;
+  const bgB = (maxBin & 0b11) / 3;
   const feat = new Float32Array(width * height);
   const cx = (width - 1) / 2;
   const cy = (height - 1) / 2;
@@ -1014,11 +1030,17 @@ function scannerFeatureFromImageData(raw, width, height) {
       const gx = gray[p + 1] - gray[p - 1];
       const gy = gray[p + width] - gray[p - width];
       let mag = Math.hypot(gx, gy);
+      const pr = rgb[p * 3];
+      const pg = rgb[p * 3 + 1];
+      const pb = rgb[p * 3 + 2];
+      const bgDist = Math.hypot(pr - bgR, pg - bgG, pb - bgB);
+      const fgWeight = Math.max(0, Math.min(1, (bgDist - 0.08) / 0.34));
       const dx = (x - cx) / rx;
       const dy = (y - cy) / ry;
       const radial = Math.max(0, 1 - Math.hypot(dx, dy));
-      mag *= 0.35 + radial * 0.65;
-      if (x > width * 0.72 && y > height * 0.72) mag *= 0.35;
+      mag *= (0.24 + radial * 0.76) * (0.28 + fgWeight * 0.72);
+      if (x > width * 0.72 && y > height * 0.72) mag *= 0.3;
+      if (x < width * 0.2 && y < height * 0.2) mag *= 0.55;
       feat[p] = mag;
     }
   }
@@ -1362,11 +1384,60 @@ function buildTesterView() {
 function buildCreditsView() {
   const d = document.createElement("div");
   d.className = "credits-box view-credits";
-  d.innerHTML =
-    `<h2 style="margin-top:0">${escapeHtml(t(lang, "credits.title"))}</h2>
-    <p>${escapeHtml(t(lang, "credits.hecho_por"))}</p>
-    <p>${escapeHtml(t(lang, "credits.idea"))}</p>
-    <p>${escapeHtml(t(lang, "credits.database"))}</p>`;
+  d.innerHTML = `<h2 style="margin-top:0">${escapeHtml(t(lang, "credits.title"))}</h2>`;
+
+  const intro = document.createElement("p");
+  intro.className = "muted";
+  intro.textContent = t(lang, "credits.subtitle");
+  d.appendChild(intro);
+
+  const members = [
+    {
+      role: t(lang, "credits.role_creator"),
+      handle: "@meliodas_000",
+      discordUrl: "https://discord.com/app",
+      robloxUrl: "https://www.roblox.com/search/users?keyword=meliodas_000",
+      accent: "meli",
+    },
+    {
+      role: t(lang, "credits.role_idea_db"),
+      handle: "@Toropapita",
+      discordUrl: "https://discord.com/app",
+      robloxUrl: "https://www.roblox.com/search/users?keyword=Toropapita",
+      accent: "toro",
+    },
+  ];
+
+  const grid = document.createElement("div");
+  grid.className = "credits-grid";
+  for (const m of members) {
+    const card = document.createElement("article");
+    card.className = `credits-card ${m.accent}`;
+    card.innerHTML = `
+      <div class="credits-avatar">${escapeHtml(m.handle.slice(1, 3).toUpperCase())}</div>
+      <div class="credits-meta">
+        <h3>${escapeHtml(m.handle)}</h3>
+        <p class="muted">${escapeHtml(m.role)}</p>
+      </div>
+    `;
+    const actions = document.createElement("div");
+    actions.className = "credits-actions";
+    const dBtn = document.createElement("a");
+    dBtn.href = m.discordUrl;
+    dBtn.target = "_blank";
+    dBtn.rel = "noopener noreferrer";
+    dBtn.textContent = t(lang, "credits.open_discord");
+    const rBtn = document.createElement("a");
+    rBtn.href = m.robloxUrl;
+    rBtn.target = "_blank";
+    rBtn.rel = "noopener noreferrer";
+    rBtn.textContent = t(lang, "credits.open_roblox");
+    actions.appendChild(dBtn);
+    actions.appendChild(rBtn);
+    card.appendChild(actions);
+    grid.appendChild(card);
+  }
+  d.appendChild(grid);
   return d;
 }
 
