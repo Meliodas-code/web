@@ -91,6 +91,8 @@ export const I18N = {
     credits: {
       title: "CRÉDITOS",
       subtitle: "Equipo y perfiles oficiales",
+      badge: "TD HUB Community",
+      foot: "Si quieres aparecer aquí con datos exactos, comparte tus enlaces oficiales.",
       role_creator: "Creador del proyecto",
       role_idea_db: "Idea y base de datos",
       open_discord: "Abrir Discord",
@@ -190,6 +192,8 @@ export const I18N = {
     credits: {
       title: "CREDITS",
       subtitle: "Team and official profiles",
+      badge: "TD HUB Community",
+      foot: "If you want to appear here with exact data, share your official links.",
       role_creator: "Project creator",
       role_idea_db: "Idea and database",
       open_discord: "Open Discord",
