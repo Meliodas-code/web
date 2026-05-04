@@ -43,8 +43,8 @@ let pendingToolbarFocusRoute = /** @type {null | "calc" | "trade"} */ (null);
 /** Cuenta atrás pantalla Scanner (se limpia al cambiar de ruta). */
 let scannerCountdownTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
 
-/** Martes 5 may 2026, 20:00 hora peninsular (España, CEST). */
-const SCANNER_LAUNCH_AT_MS = Date.parse("2026-29-05T20:00:00+02:00");
+/** Friday May 29, 2026, 20:00 PM (Spain mainland). */
+const SCANNER_LAUNCH_AT_MS = Date.parse("2026-05-29T20:00:00+02:00"); 
 
 const TD_MOBILE_MQ =
   typeof window !== "undefined" && window.matchMedia
