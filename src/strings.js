@@ -90,6 +90,11 @@ export const I18N = {
     },
     credits: {
       title: "CRÉDITOS",
+      subtitle: "Equipo y perfiles oficiales",
+      role_creator: "Creador del proyecto",
+      role_idea_db: "Idea y base de datos",
+      open_discord: "Abrir Discord",
+      open_roblox: "Abrir Roblox",
       hecho_por: "Hecho por: @meliodas_000.",
       idea: "Idea propuesta por: @Toropapita",
       database: "Base de datos: @Toropapita",
@@ -184,6 +189,11 @@ export const I18N = {
     },
     credits: {
       title: "CREDITS",
+      subtitle: "Team and official profiles",
+      role_creator: "Project creator",
+      role_idea_db: "Idea and database",
+      open_discord: "Open Discord",
+      open_roblox: "Open Roblox",
       hecho_por: "Made by: @meliodas_000.",
       idea: "Idea proposed by: @Toropapita",
       database: "Database: @Toropapita",
