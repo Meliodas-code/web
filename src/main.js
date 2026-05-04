@@ -55,6 +55,26 @@ const SCANNER_TEST_USER = "UN66467019";
 const SCANNER_TEST_PASS = "1234";
 const SCANNER_VECTOR_SIZE = 40;
 const SCANNER_MATCH_THRESHOLD = 0.76;
+const CREDITS_PROFILES = [
+  {
+    roleKey: "credits.role_creator",
+    handle: "@meliodas_000",
+    initials: "ME",
+    accent: "meli",
+    avatar: "assets/profiles/meliodas.jpg",
+    discordUrl: "https://discord.com/app",
+    robloxUrl: "https://www.roblox.com/search/users?keyword=meliodas_000",
+  },
+  {
+    roleKey: "credits.role_idea_db",
+    handle: "@Toropapita",
+    initials: "TO",
+    accent: "toro",
+    avatar: "assets/profiles/toropapita.jpg",
+    discordUrl: "https://discord.com/app",
+    robloxUrl: "https://www.roblox.com/search/users?keyword=Toropapita",
+  },
+];
 
 let scannerTesterAuth = false;
 let scannerTesterError = "";
@@ -1391,35 +1411,34 @@ function buildCreditsView() {
   intro.textContent = t(lang, "credits.subtitle");
   d.appendChild(intro);
 
-  const members = [
-    {
-      role: t(lang, "credits.role_creator"),
-      handle: "@meliodas_000",
-      discordUrl: "https://discord.com/app",
-      robloxUrl: "https://www.roblox.com/search/users?keyword=meliodas_000",
-      accent: "meli",
-    },
-    {
-      role: t(lang, "credits.role_idea_db"),
-      handle: "@Toropapita",
-      discordUrl: "https://discord.com/app",
-      robloxUrl: "https://www.roblox.com/search/users?keyword=Toropapita",
-      accent: "toro",
-    },
-  ];
-
   const grid = document.createElement("div");
   grid.className = "credits-grid";
-  for (const m of members) {
+  for (const m of CREDITS_PROFILES) {
     const card = document.createElement("article");
     card.className = `credits-card ${m.accent}`;
-    card.innerHTML = `
-      <div class="credits-avatar">${escapeHtml(m.handle.slice(1, 3).toUpperCase())}</div>
-      <div class="credits-meta">
-        <h3>${escapeHtml(m.handle)}</h3>
-        <p class="muted">${escapeHtml(m.role)}</p>
-      </div>
+    const avatarWrap = document.createElement("div");
+    avatarWrap.className = "credits-avatar";
+    const avatarImg = document.createElement("img");
+    avatarImg.src = assetUrl(m.avatar);
+    avatarImg.alt = `${m.handle} avatar`;
+    const avatarFallback = document.createElement("span");
+    avatarFallback.textContent = m.initials;
+    avatarImg.addEventListener("error", () => {
+      avatarImg.style.display = "none";
+      avatarFallback.style.display = "grid";
+    });
+    avatarWrap.appendChild(avatarImg);
+    avatarWrap.appendChild(avatarFallback);
+
+    const meta = document.createElement("div");
+    meta.className = "credits-meta";
+    meta.innerHTML = `
+      <h3>${escapeHtml(m.handle)}</h3>
+      <p class="muted">${escapeHtml(t(lang, m.roleKey))}</p>
     `;
+    card.appendChild(avatarWrap);
+    card.appendChild(meta);
+
     const actions = document.createElement("div");
     actions.className = "credits-actions";
     const dBtn = document.createElement("a");
