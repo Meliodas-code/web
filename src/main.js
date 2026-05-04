@@ -64,6 +64,7 @@ let scannerTesterAnalyzing = false;
 let scannerTesterMatches = [];
 const scannerTemplateCache = new Map();
 const routeScrollTop = Object.create(null);
+const tradePickerScrollTop = { left: 0, right: 0 };
 
 function syncTdMobileAttr() {
   document.documentElement.dataset.tdMobile =
@@ -87,6 +88,12 @@ function rememberRouteScroll() {
   const mainEl = document.querySelector("main.content");
   if (!mainEl) return;
   routeScrollTop[route] = mainEl.scrollTop || 0;
+  if (route === "trade") {
+    const left = mainEl.querySelector('.trade-picker[data-side="left"]');
+    const right = mainEl.querySelector('.trade-picker[data-side="right"]');
+    if (left) tradePickerScrollTop.left = left.scrollTop || 0;
+    if (right) tradePickerScrollTop.right = right.scrollTop || 0;
+  }
 }
 
 function restoreRouteScroll(route, mainEl) {
@@ -95,6 +102,12 @@ function restoreRouteScroll(route, mainEl) {
   if (typeof top !== "number") return;
   requestAnimationFrame(() => {
     mainEl.scrollTop = top;
+    if (route === "trade") {
+      const left = mainEl.querySelector('.trade-picker[data-side="left"]');
+      const right = mainEl.querySelector('.trade-picker[data-side="right"]');
+      if (left) left.scrollTop = tradePickerScrollTop.left || 0;
+      if (right) right.scrollTop = tradePickerScrollTop.right || 0;
+    }
   });
 }
 
@@ -635,6 +648,7 @@ function buildTradeHalf(sideName, filtered) {
 
   const listWrap = document.createElement("div");
   listWrap.className = "trade-picker";
+  listWrap.dataset.side = sideName;
 
   const cmap =
     sideName === "left" ? tradeLeftCounts : tradeRightCounts;
@@ -1025,6 +1039,8 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
   const img = await scannerImageFromSrc(dataUrl);
   const crops = scannerBuildCandidates(img);
   const rawHits = [];
+  /** @type {null | {unit:any, similarity:number, rect:any}} */
+  let bestGlobal = null;
   for (const crop of crops) {
     const srcFull = scannerVectorFromCrop(img, crop, 1);
     const srcCenter = scannerVectorFromCrop(img, crop, 0.7);
@@ -1046,6 +1062,9 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
       }
     }
     if (!best) continue;
+    if (!bestGlobal || best.similarity > bestGlobal.similarity) {
+      bestGlobal = { ...best, rect: crop };
+    }
     const gap = best.similarity - (second?.similarity ?? 0);
     if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.015) continue;
     rawHits.push({ ...best, rect: crop });
@@ -1076,10 +1095,15 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
     prev.bestSimilarity = Math.max(prev.bestSimilarity, h.similarity);
     merged.set(h.unit.nombre, prev);
   }
-  return [...merged.values()].sort((a, b) => {
+  const finalRows = [...merged.values()].sort((a, b) => {
     if (b.count !== a.count) return b.count - a.count;
     return b.bestSimilarity - a.bestSimilarity;
   });
+  if (finalRows.length) return finalRows;
+  if (bestGlobal && bestGlobal.similarity >= 0.62) {
+    return [{ unit: bestGlobal.unit, count: 1, bestSimilarity: bestGlobal.similarity }];
+  }
+  return [];
 }
 
 function buildScannerView() {
