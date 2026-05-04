@@ -853,7 +853,7 @@ function scannerImageFromSrc(src) {
   });
 }
 
-function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE) {
+function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -861,9 +861,11 @@ function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE) {
   if (!ctx) return null;
   ctx.clearRect(0, 0, size, size);
   const side = Math.min(img.naturalWidth || img.width, img.naturalHeight || img.height);
-  const sx = ((img.naturalWidth || img.width) - side) / 2;
-  const sy = ((img.naturalHeight || img.height) - side) / 2;
-  ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+  const cr = Math.max(0.2, Math.min(1, centerRatio));
+  const sx = ((img.naturalWidth || img.width) - side) / 2 + (side * (1 - cr)) / 2;
+  const sy = ((img.naturalHeight || img.height) - side) / 2 + (side * (1 - cr)) / 2;
+  const ss = side * cr;
+  ctx.drawImage(img, sx, sy, ss, ss, 0, 0, size, size);
   const raw = ctx.getImageData(0, 0, size, size).data;
   const vec = new Float32Array(size * size);
   for (let i = 0, p = 0; i < raw.length; i += 4, p += 1) {
@@ -906,37 +908,155 @@ async function scannerTemplateForUnit(unit) {
   if (scannerTemplateCache.has(unit.nombre)) return scannerTemplateCache.get(unit.nombre);
   try {
     const img = await scannerImageFromSrc(assetUrl(unit.imagen));
-    const vec = scannerVectorFromImage(img);
-    scannerTemplateCache.set(unit.nombre, vec);
-    return vec;
+    const full = scannerVectorFromImage(img);
+    const center = scannerVectorFromImage(img, SCANNER_VECTOR_SIZE, 0.7);
+    const packed = { full, center };
+    scannerTemplateCache.set(unit.nombre, packed);
+    return packed;
   } catch (_) {
     scannerTemplateCache.set(unit.nombre, null);
     return null;
   }
 }
 
-async function scannerAnalyzeImageDataUrl(dataUrl) {
-  const img = await scannerImageFromSrc(dataUrl);
-  const sourceVec = scannerVectorFromImage(img);
-  if (!sourceVec) return [];
-  let best = null;
-  let second = null;
-  for (const unit of units) {
-    const tvec = await scannerTemplateForUnit(unit);
-    if (!tvec) continue;
-    const sim = scannerSimilarity(sourceVec, tvec);
-    const row = { unit, similarity: sim };
-    if (!best || sim > best.similarity) {
-      second = best;
-      best = row;
-    } else if (!second || sim > second.similarity) {
-      second = row;
+function scannerIou(a, b) {
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.w, b.x + b.w);
+  const y2 = Math.min(a.y + a.h, b.y + b.h);
+  const iw = Math.max(0, x2 - x1);
+  const ih = Math.max(0, y2 - y1);
+  const inter = iw * ih;
+  const union = a.w * a.h + b.w * b.h - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+function scannerBuildCandidates(img) {
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  const side = Math.min(w, h);
+  const out = [];
+  out.push({ x: (w - side) / 2, y: (h - side) / 2, w: side, h: side });
+  const grids = [2, 3, 4];
+  for (const g of grids) {
+    const cw = Math.floor(w / g);
+    const ch = Math.floor(h / g);
+    const c = Math.min(cw, ch);
+    if (c < 28) continue;
+    for (let gy = 0; gy < g; gy++) {
+      for (let gx = 0; gx < g; gx++) {
+        const x = gx * cw + Math.max(0, (cw - c) / 2);
+        const y = gy * ch + Math.max(0, (ch - c) / 2);
+        out.push({ x, y, w: c, h: c });
+      }
     }
   }
-  if (!best) return [];
-  const gap = best.similarity - (second?.similarity ?? 0);
-  if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.02) return [];
-  return [{ unit: best.unit, count: 1, bestSimilarity: best.similarity }];
+  return out;
+}
+
+function scannerVectorFromCrop(img, crop, centerRatio = 1) {
+  const canvas = document.createElement("canvas");
+  canvas.width = SCANNER_VECTOR_SIZE;
+  canvas.height = SCANNER_VECTOR_SIZE;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  const c = Math.max(0.2, Math.min(1, centerRatio));
+  const cx = crop.x + (crop.w * (1 - c)) / 2;
+  const cy = crop.y + (crop.h * (1 - c)) / 2;
+  const cw = crop.w * c;
+  const ch = crop.h * c;
+  ctx.drawImage(
+    img,
+    cx,
+    cy,
+    cw,
+    ch,
+    0,
+    0,
+    SCANNER_VECTOR_SIZE,
+    SCANNER_VECTOR_SIZE,
+  );
+  const raw = ctx.getImageData(0, 0, SCANNER_VECTOR_SIZE, SCANNER_VECTOR_SIZE).data;
+  const vec = new Float32Array(SCANNER_VECTOR_SIZE * SCANNER_VECTOR_SIZE);
+  for (let i = 0, p = 0; i < raw.length; i += 4, p += 1) {
+    const r = raw[i];
+    const g = raw[i + 1];
+    const b = raw[i + 2];
+    const a = raw[i + 3] / 255;
+    vec[p] = ((0.299 * r + 0.587 * g + 0.114 * b) / 255) * a;
+  }
+  let mean = 0;
+  for (let i = 0; i < vec.length; i++) mean += vec[i];
+  mean /= vec.length || 1;
+  let sq = 0;
+  for (let i = 0; i < vec.length; i++) {
+    const d = vec[i] - mean;
+    sq += d * d;
+  }
+  const std = Math.sqrt(sq / (vec.length || 1)) || 1;
+  for (let i = 0; i < vec.length; i++) vec[i] = (vec[i] - mean) / std;
+  return vec;
+}
+
+async function scannerAnalyzeImageDataUrl(dataUrl) {
+  const img = await scannerImageFromSrc(dataUrl);
+  const crops = scannerBuildCandidates(img);
+  const rawHits = [];
+  for (const crop of crops) {
+    const srcFull = scannerVectorFromCrop(img, crop, 1);
+    const srcCenter = scannerVectorFromCrop(img, crop, 0.7);
+    if (!srcFull || !srcCenter) continue;
+    let best = null;
+    let second = null;
+    for (const unit of units) {
+      const tpl = await scannerTemplateForUnit(unit);
+      if (!tpl?.full || !tpl?.center) continue;
+      const simFull = scannerSimilarity(srcFull, tpl.full);
+      const simCenter = scannerSimilarity(srcCenter, tpl.center);
+      const sim = simFull * 0.4 + simCenter * 0.6;
+      const row = { unit, similarity: sim };
+      if (!best || sim > best.similarity) {
+        second = best;
+        best = row;
+      } else if (!second || sim > second.similarity) {
+        second = row;
+      }
+    }
+    if (!best) continue;
+    const gap = best.similarity - (second?.similarity ?? 0);
+    if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.03) continue;
+    rawHits.push({ ...best, rect: crop });
+  }
+
+  rawHits.sort((a, b) => b.similarity - a.similarity);
+  const selected = [];
+  for (const h of rawHits) {
+    let overlaps = false;
+    for (const s of selected) {
+      if (scannerIou(h.rect, s.rect) > 0.42) {
+        overlaps = true;
+        break;
+      }
+    }
+    if (!overlaps) selected.push(h);
+    if (selected.length >= 8) break;
+  }
+
+  const merged = new Map();
+  for (const h of selected) {
+    const prev = merged.get(h.unit.nombre) || {
+      unit: h.unit,
+      count: 0,
+      bestSimilarity: 0,
+    };
+    prev.count += 1;
+    prev.bestSimilarity = Math.max(prev.bestSimilarity, h.similarity);
+    merged.set(h.unit.nombre, prev);
+  }
+  return [...merged.values()].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return b.bestSimilarity - a.bestSimilarity;
+  });
 }
 
 function buildScannerView() {
