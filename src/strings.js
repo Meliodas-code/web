@@ -30,7 +30,7 @@ export const I18N = {
       coming: "Próximamente",
       wip: "En construcción",
       live_build: "Obra en curso",
-      countdown_target: 'Viernes 29 may 2026 · 20:00 (hora peninsular)",
+      countdown_target: "Viernes 29 may 2026 · 20:00 (hora peninsular)",
       countdown_heading: "Cuenta atrás",
       countdown_done: "¡Llegó la hora!",
       cd_days: "Días",
