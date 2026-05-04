@@ -1354,6 +1354,142 @@ button:focus-visible,
   box-shadow: var(--shadow-card), inset 0 0 80px rgba(245, 158, 11, 0.04);
 }
 
+.scanner-card--tester {
+  max-width: 760px;
+}
+
+.scanner-login {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.scanner-login label {
+  display: grid;
+  gap: 0.3rem;
+  text-align: left;
+}
+
+.scanner-login span {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.scanner-login input,
+.scanner-card--tester input[type="file"] {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.62rem 0.78rem;
+  font-family: inherit;
+}
+
+.scanner-login button,
+.scanner-btn {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-radius: 10px;
+  padding: 0.62rem 0.95rem;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.scanner-btn--primary,
+.scanner-login button {
+  border-color: rgba(43, 140, 221, 0.44);
+  background: linear-gradient(180deg, #3ea2ec 0%, var(--accent) 100%);
+}
+
+.scanner-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.55rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.scanner-dropzone {
+  margin-top: 0.75rem;
+  border: 1px dashed rgba(251, 191, 36, 0.45);
+  border-radius: 12px;
+  padding: 0.9rem;
+  font-size: 0.9rem;
+  color: #f3f4f6;
+  background: rgba(251, 191, 36, 0.07);
+}
+
+.scanner-dropzone:focus-visible {
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.25);
+}
+
+.scanner-preview {
+  margin-top: 0.9rem;
+  max-width: min(560px, 100%);
+  max-height: 320px;
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.scanner-msg {
+  margin: 0.7rem 0 0;
+  color: #cbd5e1;
+  font-size: 0.88rem;
+}
+
+.scanner-msg--error {
+  color: #fecaca;
+}
+
+.scanner-results-title {
+  margin: 1rem 0 0.6rem;
+  font-size: 1rem;
+}
+
+.scanner-results {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.scanner-result-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.55rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.5rem 0.65rem;
+}
+
+.scanner-result-item .name {
+  font-weight: 700;
+}
+
+.scanner-result-item .sim {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.scanner-result-item .val {
+  font-weight: 800;
+  color: #86efac;
+}
+
+.scanner-total {
+  margin: 0.8rem 0 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #86efac;
+}
+
 .scanner-bg {
   position: absolute;
   inset: 0;
