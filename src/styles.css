@@ -919,8 +919,8 @@ main.content {
   flex-wrap: wrap;
   gap: 0.68rem;
   align-items: center;
-  min-height: 128px;
-  max-height: min(320px, 48vh);
+  min-height: 156px;
+  max-height: min(360px, 52vh);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
