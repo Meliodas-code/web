@@ -54,7 +54,7 @@ const TD_MOBILE_MQ =
 const SCANNER_TEST_USER = "UN66467019";
 const SCANNER_TEST_PASS = "1234";
 const SCANNER_VECTOR_SIZE = 40;
-const SCANNER_MATCH_THRESHOLD = 0.86;
+const SCANNER_MATCH_THRESHOLD = 0.76;
 
 let scannerTesterAuth = false;
 let scannerTesterError = "";
@@ -63,6 +63,7 @@ let scannerTesterImageDataUrl = "";
 let scannerTesterAnalyzing = false;
 let scannerTesterMatches = [];
 const scannerTemplateCache = new Map();
+const routeScrollTop = Object.create(null);
 
 function syncTdMobileAttr() {
   document.documentElement.dataset.tdMobile =
@@ -78,6 +79,23 @@ function clearScannerCountdown() {
     clearInterval(scannerCountdownTimer);
     scannerCountdownTimer = null;
   }
+}
+
+function rememberRouteScroll() {
+  const route = currentRoute();
+  if (route !== "calc" && route !== "trade" && route !== "tester") return;
+  const mainEl = document.querySelector("main.content");
+  if (!mainEl) return;
+  routeScrollTop[route] = mainEl.scrollTop || 0;
+}
+
+function restoreRouteScroll(route, mainEl) {
+  if (!mainEl) return;
+  const top = routeScrollTop[route];
+  if (typeof top !== "number") return;
+  requestAnimationFrame(() => {
+    mainEl.scrollTop = top;
+  });
 }
 
 /** @param {HTMLElement} root .view-scanner */
@@ -867,25 +885,7 @@ function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1
   const ss = side * cr;
   ctx.drawImage(img, sx, sy, ss, ss, 0, 0, size, size);
   const raw = ctx.getImageData(0, 0, size, size).data;
-  const vec = new Float32Array(size * size);
-  for (let i = 0, p = 0; i < raw.length; i += 4, p += 1) {
-    const r = raw[i];
-    const g = raw[i + 1];
-    const b = raw[i + 2];
-    const a = raw[i + 3] / 255;
-    vec[p] = ((0.299 * r + 0.587 * g + 0.114 * b) / 255) * a;
-  }
-  let mean = 0;
-  for (let i = 0; i < vec.length; i++) mean += vec[i];
-  mean /= vec.length || 1;
-  let sq = 0;
-  for (let i = 0; i < vec.length; i++) {
-    const d = vec[i] - mean;
-    sq += d * d;
-  }
-  const std = Math.sqrt(sq / (vec.length || 1)) || 1;
-  for (let i = 0; i < vec.length; i++) vec[i] = (vec[i] - mean) / std;
-  return vec;
+  return scannerFeatureFromImageData(raw, size, size);
 }
 
 function scannerSimilarity(vecA, vecB) {
@@ -977,25 +977,48 @@ function scannerVectorFromCrop(img, crop, centerRatio = 1) {
     SCANNER_VECTOR_SIZE,
   );
   const raw = ctx.getImageData(0, 0, SCANNER_VECTOR_SIZE, SCANNER_VECTOR_SIZE).data;
-  const vec = new Float32Array(SCANNER_VECTOR_SIZE * SCANNER_VECTOR_SIZE);
+  return scannerFeatureFromImageData(raw, SCANNER_VECTOR_SIZE, SCANNER_VECTOR_SIZE);
+}
+
+function scannerFeatureFromImageData(raw, width, height) {
+  const gray = new Float32Array(width * height);
   for (let i = 0, p = 0; i < raw.length; i += 4, p += 1) {
     const r = raw[i];
     const g = raw[i + 1];
     const b = raw[i + 2];
     const a = raw[i + 3] / 255;
-    vec[p] = ((0.299 * r + 0.587 * g + 0.114 * b) / 255) * a;
+    gray[p] = ((0.299 * r + 0.587 * g + 0.114 * b) / 255) * a;
+  }
+  const feat = new Float32Array(width * height);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const rx = Math.max(1, cx);
+  const ry = Math.max(1, cy);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const p = y * width + x;
+      const gx = gray[p + 1] - gray[p - 1];
+      const gy = gray[p + width] - gray[p - width];
+      let mag = Math.hypot(gx, gy);
+      const dx = (x - cx) / rx;
+      const dy = (y - cy) / ry;
+      const radial = Math.max(0, 1 - Math.hypot(dx, dy));
+      mag *= 0.35 + radial * 0.65;
+      if (x > width * 0.72 && y > height * 0.72) mag *= 0.35;
+      feat[p] = mag;
+    }
   }
   let mean = 0;
-  for (let i = 0; i < vec.length; i++) mean += vec[i];
-  mean /= vec.length || 1;
+  for (let i = 0; i < feat.length; i++) mean += feat[i];
+  mean /= feat.length || 1;
   let sq = 0;
-  for (let i = 0; i < vec.length; i++) {
-    const d = vec[i] - mean;
+  for (let i = 0; i < feat.length; i++) {
+    const d = feat[i] - mean;
     sq += d * d;
   }
-  const std = Math.sqrt(sq / (vec.length || 1)) || 1;
-  for (let i = 0; i < vec.length; i++) vec[i] = (vec[i] - mean) / std;
-  return vec;
+  const std = Math.sqrt(sq / (feat.length || 1)) || 1;
+  for (let i = 0; i < feat.length; i++) feat[i] = (feat[i] - mean) / std;
+  return feat;
 }
 
 async function scannerAnalyzeImageDataUrl(dataUrl) {
@@ -1024,7 +1047,7 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
     }
     if (!best) continue;
     const gap = best.similarity - (second?.similarity ?? 0);
-    if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.03) continue;
+    if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.015) continue;
     rawHits.push({ ...best, rect: crop });
   }
 
@@ -1342,6 +1365,7 @@ function renderApp() {
   const root = document.getElementById("app");
   if (!root) return;
   root.style.overflow = "";
+  rememberRouteScroll();
 
   clearScannerCountdown();
   root.innerHTML = "";
@@ -1403,6 +1427,7 @@ function renderApp() {
   shell.appendChild(side);
   shell.appendChild(main);
   root.appendChild(shell);
+  restoreRouteScroll(route, main);
 
   if (route === "calc") maybeRefocusToolbarSearch("calc");
   else if (route === "trade") maybeRefocusToolbarSearch("trade");
