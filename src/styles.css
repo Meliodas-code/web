@@ -944,8 +944,8 @@ main.content {
 
 .trade-inv-slot {
   position: relative;
-  width: 86px;
-  height: 86px;
+  width: 94px;
+  height: 94px;
   border-radius: 14px;
   border: 1px solid var(--border-strong);
   background: rgba(255, 255, 255, 0.04);
@@ -971,8 +971,8 @@ main.content {
   position: absolute;
   bottom: 4px;
   left: 4px;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   object-fit: contain;
   border-radius: 50%;
   background: rgba(10, 10, 14, 0.82);
@@ -1283,7 +1283,7 @@ html[data-td-mobile="1"] .trade-inv-slot-vote {
 }
 
 .credits-box {
-  max-width: 560px;
+  max-width: 860px;
   margin: clamp(1.5rem, 4vw, 2.5rem) auto;
   padding: 1.6rem 1.5rem;
   background: linear-gradient(
@@ -1308,6 +1308,87 @@ html[data-td-mobile="1"] .trade-inv-slot-vote {
 
 .credits-box p {
   margin: 0.55rem 0;
+}
+
+.credits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.95rem;
+  margin-top: 1rem;
+}
+
+.credits-card {
+  position: relative;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.08));
+  padding: 0.95rem;
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 0.75rem;
+  align-items: center;
+  box-shadow: var(--shadow-card);
+  transition: transform var(--transition-fast), border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.credits-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: var(--shadow-soft);
+}
+
+.credits-card.meli {
+  box-shadow: var(--shadow-card), 0 0 26px rgba(43, 140, 221, 0.15);
+}
+
+.credits-card.toro {
+  box-shadow: var(--shadow-card), 0 0 26px rgba(232, 93, 84, 0.14);
+}
+
+.credits-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #fff;
+  background: linear-gradient(145deg, #2b8cdd, #1f6aa5);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.credits-card.toro .credits-avatar {
+  background: linear-gradient(145deg, #e85d54, #b44138);
+}
+
+.credits-meta h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+}
+
+.credits-meta p {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.credits-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+}
+
+.credits-actions a {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 :focus-visible {
