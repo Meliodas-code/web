@@ -969,7 +969,7 @@ main.content {
 
 .trade-inv-slot-vote {
   position: absolute;
-  top: 4px;
+  bottom: 4px;
   left: 4px;
   width: 34px;
   height: 34px;
