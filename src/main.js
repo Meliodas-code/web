@@ -63,7 +63,7 @@ const CREDITS_PROFILES = [
     accent: "meli",
     avatar: "assets/profiles/meliodas.jpg",
     discordUrl: "https://discord.com/app",
-    robloxUrl: "https://www.roblox.com/search/users?keyword=meliodas_000",
+    robloxUrl: "https://www.roblox.com/es/users/3957024867/profile",
   },
   {
     roleKey: "credits.role_idea_db",
@@ -72,7 +72,7 @@ const CREDITS_PROFILES = [
     accent: "toro",
     avatar: "assets/profiles/toropapita.jpg",
     discordUrl: "https://discord.com/app",
-    robloxUrl: "https://www.roblox.com/search/users?keyword=Toropapita",
+    robloxUrl: "https://www.roblox.com/es/users/1202005376/profile",
   },
 ];
 
