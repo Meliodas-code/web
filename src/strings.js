@@ -73,7 +73,7 @@ export const I18N = {
       stock_you: "Tu inventario en el trade",
       stock_opponent: "Inventario del rival",
       stock_empty:
-        "Aún sin unidades. Pulsa + en las filas de abajo para incorporarlas a este lado.",
+        "",
       picker_caption: "Unidades disponibles · + / −",
       left: "Tu oferta",
       right: "Oferta rival",
@@ -174,7 +174,7 @@ export const I18N = {
       stock_you: "Your inventory in this trade",
       stock_opponent: "Opponent’s inventory",
       stock_empty:
-        "Nothing here yet — use + in the rows below to add units to this side.",
+        "",
       picker_caption: "Available units · + / −",
       left: "Your offer",
       right: "Opponent offer",
