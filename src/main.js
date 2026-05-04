@@ -51,6 +51,19 @@ const TD_MOBILE_MQ =
     ? window.matchMedia("(max-width: 640px)")
     : null;
 
+const SCANNER_TEST_USER = "UN66467019";
+const SCANNER_TEST_PASS = "1234";
+const SCANNER_VECTOR_SIZE = 40;
+const SCANNER_MATCH_THRESHOLD = 0.78;
+
+let scannerTesterAuth = false;
+let scannerTesterError = "";
+let scannerTesterNotice = "";
+let scannerTesterImageDataUrl = "";
+let scannerTesterAnalyzing = false;
+let scannerTesterMatches = [];
+const scannerTemplateCache = new Map();
+
 function syncTdMobileAttr() {
   document.documentElement.dataset.tdMobile =
     TD_MOBILE_MQ?.matches ? "1" : "0";
@@ -825,67 +838,335 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+function scannerResetNoticeError() {
+  scannerTesterError = "";
+  scannerTesterNotice = "";
+}
+
+function scannerImageFromSrc(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`No se pudo cargar imagen: ${src}`));
+    img.src = src;
+  });
+}
+
+function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, size, size);
+  const side = Math.min(img.naturalWidth || img.width, img.naturalHeight || img.height);
+  const sx = ((img.naturalWidth || img.width) - side) / 2;
+  const sy = ((img.naturalHeight || img.height) - side) / 2;
+  ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+  const raw = ctx.getImageData(0, 0, size, size).data;
+  const vec = new Float32Array(size * size);
+  for (let i = 0, p = 0; i < raw.length; i += 4, p += 1) {
+    const r = raw[i];
+    const g = raw[i + 1];
+    const b = raw[i + 2];
+    const a = raw[i + 3] / 255;
+    vec[p] = ((0.299 * r + 0.587 * g + 0.114 * b) / 255) * a;
+  }
+  return vec;
+}
+
+function scannerSimilarity(vecA, vecB) {
+  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+  let err = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    const d = vecA[i] - vecB[i];
+    err += d * d;
+  }
+  const mse = err / vecA.length;
+  return Math.max(0, 1 - mse);
+}
+
+async function scannerTemplateForUnit(unit) {
+  if (!unit?.imagen) return null;
+  if (scannerTemplateCache.has(unit.nombre)) return scannerTemplateCache.get(unit.nombre);
+  try {
+    const img = await scannerImageFromSrc(assetUrl(unit.imagen));
+    const vec = scannerVectorFromImage(img);
+    scannerTemplateCache.set(unit.nombre, vec);
+    return vec;
+  } catch (_) {
+    scannerTemplateCache.set(unit.nombre, null);
+    return null;
+  }
+}
+
+function scannerTileVectors(img) {
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  const base = document.createElement("canvas");
+  base.width = w;
+  base.height = h;
+  const bctx = base.getContext("2d");
+  if (!bctx) return [];
+  bctx.drawImage(img, 0, 0);
+  const vectors = [];
+  const grids = [1, 2, 3];
+  for (const g of grids) {
+    const side = Math.floor(Math.min(w, h) / g);
+    if (side < 24) continue;
+    const startX = Math.floor((w - side * g) / 2);
+    const startY = Math.floor((h - side * g) / 2);
+    for (let gy = 0; gy < g; gy++) {
+      for (let gx = 0; gx < g; gx++) {
+        const tile = document.createElement("canvas");
+        tile.width = SCANNER_VECTOR_SIZE;
+        tile.height = SCANNER_VECTOR_SIZE;
+        const tctx = tile.getContext("2d", { willReadFrequently: true });
+        if (!tctx) continue;
+        tctx.drawImage(
+          base,
+          startX + gx * side,
+          startY + gy * side,
+          side,
+          side,
+          0,
+          0,
+          SCANNER_VECTOR_SIZE,
+          SCANNER_VECTOR_SIZE,
+        );
+        const raw = tctx.getImageData(0, 0, SCANNER_VECTOR_SIZE, SCANNER_VECTOR_SIZE).data;
+        const vec = new Float32Array(SCANNER_VECTOR_SIZE * SCANNER_VECTOR_SIZE);
+        for (let i = 0, p = 0; i < raw.length; i += 4, p += 1) {
+          const r = raw[i];
+          const gch = raw[i + 1];
+          const b = raw[i + 2];
+          const a = raw[i + 3] / 255;
+          vec[p] = ((0.299 * r + 0.587 * gch + 0.114 * b) / 255) * a;
+        }
+        vectors.push(vec);
+      }
+    }
+  }
+  return vectors;
+}
+
+async function scannerAnalyzeImageDataUrl(dataUrl) {
+  const img = await scannerImageFromSrc(dataUrl);
+  const vectors = scannerTileVectors(img);
+  const matches = new Map();
+  for (const vec of vectors) {
+    let best = null;
+    for (const unit of units) {
+      const tvec = await scannerTemplateForUnit(unit);
+      if (!tvec) continue;
+      const sim = scannerSimilarity(vec, tvec);
+      if (!best || sim > best.similarity) {
+        best = { unit, similarity: sim };
+      }
+    }
+    if (!best || best.similarity < SCANNER_MATCH_THRESHOLD) continue;
+    const key = best.unit.nombre;
+    const prev = matches.get(key) || {
+      unit: best.unit,
+      count: 0,
+      bestSimilarity: 0,
+    };
+    prev.count += 1;
+    prev.bestSimilarity = Math.max(prev.bestSimilarity, best.similarity);
+    matches.set(key, prev);
+  }
+  return [...matches.values()].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return b.bestSimilarity - a.bestSimilarity;
+  });
+}
+
 function buildScannerView() {
   const wrap = document.createElement("div");
   wrap.className = "view-scanner";
-
-  const bg = document.createElement("div");
-  bg.className = "scanner-bg";
-  bg.setAttribute("aria-hidden", "true");
-  bg.innerHTML = `
-    <div class="scanner-grid"></div>
-    <div class="scanner-stripes"></div>`;
-
-  const crane = document.createElement("div");
-  crane.className = "scanner-crane-wrap";
-  crane.setAttribute("aria-hidden", "true");
-  crane.innerHTML = `
-    <svg class="scanner-crane" viewBox="0 0 200 220" preserveAspectRatio="xMidYMax meet" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="sc-mast" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#6b7280"/>
-          <stop offset="100%" stop-color="#3d4454"/>
-        </linearGradient>
-        <linearGradient id="sc-jib" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stop-color="#fcd34d"/>
-          <stop offset="100%" stop-color="#b45309"/>
-        </linearGradient>
-      </defs>
-      <rect x="68" y="178" width="64" height="14" rx="3" fill="#1f2937"/>
-      <rect x="90" y="32" width="20" height="150" rx="3" fill="url(#sc-mast)"/>
-      <path d="M 110 40 L 178 54 L 178 66 L 110 48 Z" fill="url(#sc-jib)"/>
-      <line x1="172" y1="66" x2="152" y2="118" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
-      <rect x="136" y="118" width="28" height="20" rx="3" fill="#4b5563" stroke="#f59e0b" stroke-width="1.5"/>
-      <circle cx="178" cy="58" r="5" fill="#fbbf24"/>
-      <rect x="78" y="168" width="44" height="12" rx="2" fill="#374151" stroke="rgba(245,158,11,0.5)" stroke-width="1"/>
-    </svg>`;
-
   const card = document.createElement("div");
-  card.className = "scanner-card";
+  card.className = "scanner-card scanner-card--tester";
   card.innerHTML = `
     <p class="scanner-kicker">${escapeHtml(t(lang, "scanner.kicker"))}</p>
-    <h2 class="scanner-title">${escapeHtml(t(lang, "scanner.title"))}</h2>
-    <p class="scanner-coming">${escapeHtml(t(lang, "scanner.coming"))}</p>
-    <p class="scanner-wip">${escapeHtml(t(lang, "scanner.wip"))}</p>
-    <p class="scanner-countdown-target muted">${escapeHtml(t(lang, "scanner.countdown_target"))}</p>
-    <p class="scanner-countdown-head">${escapeHtml(t(lang, "scanner.countdown_heading"))}</p>
-    <div class="scanner-countdown" data-scanner-countdown>
-      <div class="scanner-cd-cell"><span class="scanner-cd-val" data-cd-d>0</span><span class="scanner-cd-lbl">${escapeHtml(t(lang, "scanner.cd_days"))}</span></div>
-      <div class="scanner-cd-cell"><span class="scanner-cd-val" data-cd-h>00</span><span class="scanner-cd-lbl">${escapeHtml(t(lang, "scanner.cd_hours"))}</span></div>
-      <div class="scanner-cd-cell"><span class="scanner-cd-val" data-cd-m>00</span><span class="scanner-cd-lbl">${escapeHtml(t(lang, "scanner.cd_minutes"))}</span></div>
-      <div class="scanner-cd-cell"><span class="scanner-cd-val" data-cd-s>00</span><span class="scanner-cd-lbl">${escapeHtml(t(lang, "scanner.cd_seconds"))}</span></div>
-    </div>
-    <div class="scanner-blink" aria-hidden="true">
-      <span class="scanner-blink-dot"></span>
-      <span>${escapeHtml(t(lang, "scanner.live_build"))}</span>
-    </div>`;
+    <h2 class="scanner-title">${escapeHtml(t(lang, "scanner.tester_title"))}</h2>
+    <p class="scanner-wip">${escapeHtml(t(lang, "scanner.tester_desc"))}</p>`;
 
-  wrap.appendChild(bg);
-  wrap.appendChild(crane);
+  if (!scannerTesterAuth) {
+    const form = document.createElement("form");
+    form.className = "scanner-login";
+    form.innerHTML = `
+      <label>
+        <span>${escapeHtml(t(lang, "scanner.user"))}</span>
+        <input name="user" type="text" autocomplete="username" required />
+      </label>
+      <label>
+        <span>${escapeHtml(t(lang, "scanner.password"))}</span>
+        <input name="pass" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit">${escapeHtml(t(lang, "scanner.login"))}</button>
+    `;
+    form.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(form);
+      const user = String(fd.get("user") || "");
+      const pass = String(fd.get("pass") || "");
+      if (user === SCANNER_TEST_USER && pass === SCANNER_TEST_PASS) {
+        scannerTesterAuth = true;
+        scannerResetNoticeError();
+      } else {
+        scannerTesterError = t(lang, "scanner.login_error");
+      }
+      renderApp();
+    });
+    if (scannerTesterError) {
+      const err = document.createElement("p");
+      err.className = "scanner-msg scanner-msg--error";
+      err.textContent = scannerTesterError;
+      card.appendChild(err);
+    }
+    card.appendChild(form);
+    wrap.appendChild(card);
+    return wrap;
+  }
+
+  const drop = document.createElement("div");
+  drop.className = "scanner-dropzone";
+  drop.tabIndex = 0;
+  drop.textContent = t(lang, "scanner.drop_hint");
+  drop.addEventListener("paste", (ev) => {
+    const items = ev.clipboardData?.items || [];
+    for (const item of items) {
+      if (!item.type.startsWith("image/")) continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      const reader = new FileReader();
+      reader.onload = () => {
+        scannerTesterImageDataUrl = String(reader.result || "");
+        scannerTesterNotice = t(lang, "scanner.source_loaded");
+        scannerTesterMatches = [];
+        renderApp();
+      };
+      reader.readAsDataURL(file);
+      ev.preventDefault();
+      return;
+    }
+  });
+
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.addEventListener("change", () => {
+    const f = input.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      scannerTesterImageDataUrl = String(reader.result || "");
+      scannerTesterNotice = t(lang, "scanner.source_loaded");
+      scannerTesterMatches = [];
+      renderApp();
+    };
+    reader.readAsDataURL(f);
+  });
+
+  const btnRow = document.createElement("div");
+  btnRow.className = "scanner-actions";
+  const analyzeBtn = document.createElement("button");
+  analyzeBtn.type = "button";
+  analyzeBtn.className = "scanner-btn scanner-btn--primary";
+  analyzeBtn.disabled = scannerTesterAnalyzing;
+  analyzeBtn.textContent = scannerTesterAnalyzing
+    ? t(lang, "scanner.analyzing")
+    : t(lang, "scanner.analyze");
+  analyzeBtn.onclick = async () => {
+    if (!scannerTesterImageDataUrl) {
+      scannerTesterError = t(lang, "scanner.no_image");
+      scannerTesterNotice = "";
+      renderApp();
+      return;
+    }
+    scannerResetNoticeError();
+    scannerTesterAnalyzing = true;
+    renderApp();
+    try {
+      scannerTesterMatches = await scannerAnalyzeImageDataUrl(scannerTesterImageDataUrl);
+      if (!scannerTesterMatches.length) {
+        scannerTesterNotice = t(lang, "scanner.no_matches");
+      } else {
+        scannerTesterNotice = "";
+      }
+    } catch (e) {
+      scannerTesterError = e?.message || String(e);
+    } finally {
+      scannerTesterAnalyzing = false;
+      renderApp();
+    }
+  };
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "scanner-btn";
+  clearBtn.textContent = t(lang, "scanner.clear");
+  clearBtn.onclick = () => {
+    scannerTesterImageDataUrl = "";
+    scannerTesterMatches = [];
+    scannerResetNoticeError();
+    renderApp();
+  };
+  btnRow.appendChild(analyzeBtn);
+  btnRow.appendChild(clearBtn);
+
+  card.appendChild(input);
+  card.appendChild(drop);
+  card.appendChild(btnRow);
+
+  if (scannerTesterImageDataUrl) {
+    const prev = document.createElement("img");
+    prev.className = "scanner-preview";
+    prev.src = scannerTesterImageDataUrl;
+    prev.alt = "source";
+    card.appendChild(prev);
+  }
+
+  if (scannerTesterError) {
+    const err = document.createElement("p");
+    err.className = "scanner-msg scanner-msg--error";
+    err.textContent = scannerTesterError;
+    card.appendChild(err);
+  } else if (scannerTesterNotice) {
+    const note = document.createElement("p");
+    note.className = "scanner-msg";
+    note.textContent = scannerTesterNotice;
+    card.appendChild(note);
+  }
+
+  if (scannerTesterMatches.length) {
+    const title = document.createElement("h3");
+    title.className = "scanner-results-title";
+    title.textContent = t(lang, "scanner.results_title");
+    card.appendChild(title);
+
+    const list = document.createElement("div");
+    list.className = "scanner-results";
+    let total = 0;
+    for (const row of scannerTesterMatches) {
+      total += (Number(row.unit.valor) || 0) * row.count;
+      const item = document.createElement("div");
+      item.className = "scanner-result-item";
+      const nm = unitDisplayName(row.unit);
+      item.innerHTML = `
+        <span class="name">${escapeHtml(nm)} x${row.count}</span>
+        <span class="sim">${escapeHtml(t(lang, "scanner.confidence"))}: ${(row.bestSimilarity * 100).toFixed(1)}%</span>
+        <span class="val">${Number(row.unit.valor) || 0}</span>
+      `;
+      list.appendChild(item);
+    }
+    card.appendChild(list);
+    const totalEl = document.createElement("p");
+    totalEl.className = "scanner-total";
+    totalEl.textContent = `${t(lang, "scanner.total")}: ${total}`;
+    card.appendChild(totalEl);
+  }
+
   wrap.appendChild(card);
-
-  updateScannerCountdown(wrap);
-  scannerCountdownTimer = setInterval(() => updateScannerCountdown(wrap), 1000);
 
   return wrap;
 }
