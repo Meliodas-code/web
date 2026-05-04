@@ -937,6 +937,17 @@ function scannerSimilarity(vecA, vecB) {
   return (dot / denom + 1) / 2;
 }
 
+function scannerHistogramSimilarity(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < a.length; i++) {
+    num += Math.min(a[i], b[i]);
+    den += Math.max(a[i], b[i]);
+  }
+  return den > 0 ? num / den : 0;
+}
+
 async function scannerTemplateForUnit(unit) {
   if (!unit?.imagen) return null;
   if (scannerTemplateCache.has(unit.nombre)) return scannerTemplateCache.get(unit.nombre);
@@ -971,12 +982,12 @@ function scannerBuildCandidates(img) {
   const side = Math.min(w, h);
   const out = [];
   out.push({ x: (w - side) / 2, y: (h - side) / 2, w: side, h: side });
-  const grids = [2, 3, 4];
+  const grids = [2, 3, 4, 5, 6];
   for (const g of grids) {
     const cw = Math.floor(w / g);
     const ch = Math.floor(h / g);
     const c = Math.min(cw, ch);
-    if (c < 28) continue;
+    if (c < 20) continue;
     for (let gy = 0; gy < g; gy++) {
       for (let gx = 0; gx < g; gx++) {
         const x = gx * cw + Math.max(0, (cw - c) / 2);
@@ -1040,10 +1051,13 @@ function scannerFeatureFromImageData(raw, width, height) {
   const bgG = ((maxBin >> 2) & 0b11) / 3;
   const bgB = (maxBin & 0b11) / 3;
   const feat = new Float32Array(width * height);
+  const occ = new Float32Array(64);
+  const hist = new Float32Array(12);
   const cx = (width - 1) / 2;
   const cy = (height - 1) / 2;
   const rx = Math.max(1, cx);
   const ry = Math.max(1, cy);
+  let fgCount = 0;
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const p = y * width + x;
@@ -1062,6 +1076,16 @@ function scannerFeatureFromImageData(raw, width, height) {
       if (x > width * 0.72 && y > height * 0.72) mag *= 0.3;
       if (x < width * 0.2 && y < height * 0.2) mag *= 0.55;
       feat[p] = mag;
+      if (fgWeight > 0.24) {
+        fgCount += 1;
+        const gx8 = Math.min(7, Math.floor((x / width) * 8));
+        const gy8 = Math.min(7, Math.floor((y / height) * 8));
+        occ[gy8 * 8 + gx8] += 1;
+        const hueBin = Math.min(5, Math.floor(pr * 6));
+        const sat = Math.max(pr, pg, pb) - Math.min(pr, pg, pb);
+        const satBin = sat > 0.28 ? 1 : 0;
+        hist[satBin * 6 + hueBin] += 1;
+      }
     }
   }
   let mean = 0;
@@ -1074,7 +1098,11 @@ function scannerFeatureFromImageData(raw, width, height) {
   }
   const std = Math.sqrt(sq / (feat.length || 1)) || 1;
   for (let i = 0; i < feat.length; i++) feat[i] = (feat[i] - mean) / std;
-  return feat;
+  const occNorm = Math.max(1, fgCount);
+  for (let i = 0; i < occ.length; i++) occ[i] /= occNorm;
+  const histNorm = hist.reduce((a, b) => a + b, 0) || 1;
+  for (let i = 0; i < hist.length; i++) hist[i] /= histNorm;
+  return { edge: feat, occ, hist };
 }
 
 async function scannerAnalyzeImageDataUrl(dataUrl) {
@@ -1092,9 +1120,17 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
     for (const unit of units) {
       const tpl = await scannerTemplateForUnit(unit);
       if (!tpl?.full || !tpl?.center) continue;
-      const simFull = scannerSimilarity(srcFull, tpl.full);
-      const simCenter = scannerSimilarity(srcCenter, tpl.center);
-      const sim = simFull * 0.4 + simCenter * 0.6;
+      const simFullEdge = scannerSimilarity(srcFull.edge, tpl.full.edge);
+      const simCenterEdge = scannerSimilarity(srcCenter.edge, tpl.center.edge);
+      const simOcc =
+        (scannerSimilarity(srcFull.occ, tpl.full.occ) +
+          scannerSimilarity(srcCenter.occ, tpl.center.occ)) /
+        2;
+      const simHist =
+        (scannerHistogramSimilarity(srcFull.hist, tpl.full.hist) +
+          scannerHistogramSimilarity(srcCenter.hist, tpl.center.hist)) /
+        2;
+      const sim = simFullEdge * 0.25 + simCenterEdge * 0.45 + simOcc * 0.2 + simHist * 0.1;
       const row = { unit, similarity: sim };
       if (!best || sim > best.similarity) {
         second = best;
@@ -1108,7 +1144,7 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
       bestGlobal = { ...best, rect: crop };
     }
     const gap = best.similarity - (second?.similarity ?? 0);
-    if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.015) continue;
+    if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.01) continue;
     rawHits.push({ ...best, rect: crop });
   }
 
@@ -1142,7 +1178,7 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
     return b.bestSimilarity - a.bestSimilarity;
   });
   if (finalRows.length) return finalRows;
-  if (bestGlobal && bestGlobal.similarity >= 0.62) {
+  if (bestGlobal && bestGlobal.similarity >= 0.58) {
     return [{ unit: bestGlobal.unit, count: 1, bestSimilarity: bestGlobal.similarity }];
   }
   return [];
@@ -1410,6 +1446,10 @@ function buildCreditsView() {
   intro.className = "muted";
   intro.textContent = t(lang, "credits.subtitle");
   d.appendChild(intro);
+  const badge = document.createElement("p");
+  badge.className = "credits-badge";
+  badge.textContent = t(lang, "credits.badge");
+  d.appendChild(badge);
 
   const grid = document.createElement("div");
   grid.className = "credits-grid";
@@ -1457,6 +1497,10 @@ function buildCreditsView() {
     grid.appendChild(card);
   }
   d.appendChild(grid);
+  const foot = document.createElement("p");
+  foot.className = "muted credits-foot";
+  foot.textContent = t(lang, "credits.foot");
+  d.appendChild(foot);
   return d;
 }
 
