@@ -69,7 +69,7 @@ export const I18N = {
       search: "Buscar…",
       clear: "Limpiar todo",
       didactic_intro:
-        "Arriba en cada columna verás el inventario que vas formando en el trade. Abajo está el buscador y los controles para añadir o quitar unidades.",
+        "Sección para calcular rápidamente los intercambios",
       stock_you: "Tu inventario en el trade",
       stock_opponent: "Inventario del rival",
       stock_empty:
@@ -170,7 +170,7 @@ export const I18N = {
       search: "Search…",
       clear: "Clear all",
       didactic_intro:
-        "Each column shows the inventory you’re building for that side. Below you can search and use + / − to add units to the trade.",
+        "Section for quickly calculating exchanges",
       stock_you: "Your inventory in this trade",
       stock_opponent: "Opponent’s inventory",
       stock_empty:
