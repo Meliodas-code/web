@@ -11,7 +11,7 @@ export const I18N = {
       credits: "Créditos",
     },
     main: {
-      bienvenida: "BIENVENIDO A TD HUB",
+      bienvenida: "BIENVENIDO A LA CALCULADORA DE HECHICEROS",
       home_subtitle:
         "Usa datos en la nube. Despliegue gratis con GitHub Pages u otro hosting estático.",
       list_values_thanks:
@@ -25,12 +25,12 @@ export const I18N = {
       tester_desc: "Zona de pruebas del escáner con login temporal.",
     },
     scanner: {
-      kicker: "TD HUB",
+      kicker: "SORCERER CALCULATOR",
       title: "Scanner",
       coming: "Próximamente",
       wip: "En construcción",
       live_build: "Obra en curso",
-      countdown_target: "Viernes 29 may 2026 · 20:00 (hora peninsular)",
+      countdown_target: "Viernes 8 may 2026 · 20:00 (hora peninsular)",
       countdown_heading: "Cuenta atrás",
       countdown_done: "¡Llegó la hora!",
       cd_days: "Días",
@@ -91,7 +91,7 @@ export const I18N = {
     credits: {
       title: "CRÉDITOS",
       subtitle: "Equipo y perfiles oficiales",
-      badge: "TD HUB Community",
+      badge: "Sorcerer TD Community",
       foot: "Si quieres aparecer aquí debes colaborar con nosotros",
       role_creator: "Creador del proyecto",
       role_idea_db: "Idea y base de datos",
@@ -112,7 +112,7 @@ export const I18N = {
       credits: "Credits",
     },
     main: {
-      bienvenida: "WELCOME TO TD HUB",
+      bienvenida: "WELCOME TO SORCERER CALCULATOR",
       home_subtitle:
         "Cloud-backed data. Free deploy on GitHub Pages or any static host.",
       list_values_thanks:
@@ -126,12 +126,12 @@ export const I18N = {
       tester_desc: "Scanner testing area with temporary login.",
     },
     scanner: {
-      kicker: "TD HUB",
+      kicker: "SORCERER CALCULATOR",
       title: "Scanner",
       coming: "Coming soon",
       wip: "Under construction",
       live_build: "Work in progress",
-      countdown_target: "Friday May 29, 2026 · 8:00 PM (Spain mainland)",
+      countdown_target: "Friday May 8, 2026 · 8:00 PM (Spain mainland)",
       countdown_heading: "Countdown",
       countdown_done: "It's time!",
       cd_days: "Days",
@@ -192,7 +192,7 @@ export const I18N = {
     credits: {
       title: "CREDITS",
       subtitle: "Team and official profiles",
-      badge: "TD HUB Community",
+      badge: "Sorcerer TD Community",
       foot: "If you want to appear here, you must collaborate with us.",
       role_creator: "Project creator",
       role_idea_db: "Idea and database",
