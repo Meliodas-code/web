@@ -1535,7 +1535,7 @@ function renderApp() {
   side.className = "sidebar";
 
   const title = document.createElement("h1");
-  title.textContent = "TD HUB";
+  title.textContent = "SORCERER CALCULATOR";
 
   side.appendChild(title);
 
