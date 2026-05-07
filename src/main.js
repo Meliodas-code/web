@@ -930,9 +930,9 @@ async function scanWithGemini(baseBase64) {
   const imageBase64Only = baseBase64.split(",").pop();
   const namesList = units.map(u => u.nombre).join(", ");
   
-  const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+  // Reforzamos el prompt para que SIEMPRE dé JSON aunque no se lo pidamos en la config
+  const promptText = `Identifica las unidades de Sorcerer TD en la imagen. Usa solo estos nombres: [${namesList}]. Responde EXCLUSIVAMENTE con un objeto JSON siguiendo este formato: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  // Usamos v1 (estable)
   const googleUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
@@ -945,13 +945,8 @@ async function scanWithGemini(baseBase64) {
           { text: promptText },
           { inline_data: { mime_type: "image/png", data: imageBase64Only } }
         ]
-      }],
-      // SOLUCIÓN DEFINITIVA: Usamos todo con guiones bajos (snake_case)
-      // que es lo que el servidor espera cuando recibe un JSON manual.
-      generation_config: { 
-        response_mime_type: "application/json", 
-        temperature: 0.1 
-      }
+      }]
+      // HEMOS QUITADO generation_config PORQUE ES LO QUE DA EL ERROR 400
     })
   });
 
@@ -968,14 +963,14 @@ async function scanWithGemini(baseBase64) {
 
   let rawText = json.candidates[0].content.parts[0].text;
   
-  // Limpiamos el texto por si la IA devuelve ```json ... ```
+  // Limpiamos el texto por si la IA pone ```json ... ```
   rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
   
   try {
     return JSON.parse(rawText);
   } catch (e) {
-    console.error("Error parseando JSON de la IA:", rawText);
-    throw new Error("La IA respondió algo que no es JSON.");
+    console.error("Texto recibido de la IA no es JSON:", rawText);
+    throw new Error("La IA no respondió en formato JSON puro.");
   }
 }
 
