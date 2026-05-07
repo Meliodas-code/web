@@ -930,10 +930,10 @@ async function scanWithGemini(baseBase64) {
   const imageBase64Only = baseBase64.split(",").pop();
   const namesList = units.map(u => u.nombre).join(", ");
   
-  // Reforzamos el prompt para que SIEMPRE dé JSON aunque no se lo pidamos en la config
-  const promptText = `Identifica las unidades de Sorcerer TD en la imagen. Usa solo estos nombres: [${namesList}]. Responde EXCLUSIVAMENTE con un objeto JSON siguiendo este formato: {"found": [{"name": "Nombre", "qty": 1}]}`;
+  const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  const googleUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  // CAMBIO CLAVE: Usamos v1beta con el nombre de modelo completo
+  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
   const resp = await fetch(finalUrl, {
@@ -946,7 +946,7 @@ async function scanWithGemini(baseBase64) {
           { inline_data: { mime_type: "image/png", data: imageBase64Only } }
         ]
       }]
-      // HEMOS QUITADO generation_config PORQUE ES LO QUE DA EL ERROR 400
+      // NO ponemos generationConfig para evitar el error 400 de antes
     })
   });
 
@@ -963,15 +963,10 @@ async function scanWithGemini(baseBase64) {
 
   let rawText = json.candidates[0].content.parts[0].text;
   
-  // Limpiamos el texto por si la IA pone ```json ... ```
+  // Limpiamos por si viene con markdown
   rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
   
-  try {
-    return JSON.parse(rawText);
-  } catch (e) {
-    console.error("Texto recibido de la IA no es JSON:", rawText);
-    throw new Error("La IA no respondió en formato JSON puro.");
-  }
+  return JSON.parse(rawText);
 }
 
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
