@@ -930,10 +930,10 @@ async function scanWithGemini(baseBase64) {
   const imageBase64Only = baseBase64.split(",").pop();
   const namesList = units.map(u => u.nombre).join(", ");
   
-  const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+  const promptText = `Identifica las unidades de Sorcerer TD. Usa solo estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  // CAMBIO CLAVE: Usamos v1beta con el nombre de modelo completo
-  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`;
+  // URL ULTRA-SIMPLIFICADA: v1 y modelo sin sufijos
+  const googleUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
   const resp = await fetch(finalUrl, {
@@ -946,7 +946,6 @@ async function scanWithGemini(baseBase64) {
           { inline_data: { mime_type: "image/png", data: imageBase64Only } }
         ]
       }]
-      // NO ponemos generationConfig para evitar el error 400 de antes
     })
   });
 
@@ -963,7 +962,7 @@ async function scanWithGemini(baseBase64) {
 
   let rawText = json.candidates[0].content.parts[0].text;
   
-  // Limpiamos por si viene con markdown
+  // Limpieza de Markdown por si acaso
   rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
   
   return JSON.parse(rawText);
