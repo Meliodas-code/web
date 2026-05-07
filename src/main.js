@@ -936,7 +936,12 @@ async function scanWithGemini(baseBase64) {
     // Usamos la GEMINI_KEY que ya está definida al principio del archivo
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
     // Busca esta línea y cámbiala:
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    // 1. Probemos con el nombre que SÍ reconoció antes (el que te dio 429)
+    // Pero vamos a asegurarnos de que el SDK use la ruta correcta
+    const model = genAI.getGenerativeModel({ 
+    model: "gemini-2.0-flash",
+      apiVersion: "v1" // Forzamos v1 en lugar de v1beta si es posible
+    });
     const imageData = baseBase64.split(",")[1];
     const namesList = units.map(u => u.nombre).join(", ");
     
