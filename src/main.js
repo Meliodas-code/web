@@ -927,21 +927,17 @@ function updateScannerCdCells(found) {
 }
 
 async function scanWithGemini(baseBase64) {
-  // 1. Limpiar la imagen
   const imageBase64Only = baseBase64.split(",").pop();
   const namesList = units.map(u => u.nombre).join(", ");
   
   const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  // 2. LA URL CON PROXY (Esto engaña al navegador para que no salte el CORS)
   const googleUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
   const resp = await fetch(finalUrl, {
     method: "POST",
-    headers: { 
-      "Content-Type": "application/json" 
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{
         parts: [
@@ -949,16 +945,15 @@ async function scanWithGemini(baseBase64) {
           { inline_data: { mime_type: "image/png", data: imageBase64Only } }
         ]
       }],
-      generationConfig: {
-        response_mime_type: "application/json",
-        temperature: 0.1
+      generationConfig: { 
+        responseMimeType: "application/json", 
+        temperature: 0.1 
       }
     })
   });
 
   if (!resp.ok) {
     const errorText = await resp.text();
-    // Si sale error aquí, es que el Proxy o la Key fallaron
     throw new Error("Fallo en la comunicación: " + errorText);
   }
 
