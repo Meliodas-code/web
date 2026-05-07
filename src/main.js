@@ -926,42 +926,46 @@ function updateScannerCdCells(found) {
   });
 }
 
+// 1. Importa la librería oficial al principio del archivo
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+// ... (tus otras funciones y la variable units que ya tenías)
+
 async function scanWithGemini(baseBase64) {
-    // 1. Inicializar la IA con tu clave
+  try {
+    // 2. Inicializar el cliente (GEMINI_KEY debe estar definida en tu código)
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
     
-    // 2. Usar el modelo que vimos en tu captura (el 2.5 o el 1.5-flash)
+    // 3. Usar el modelo que vimos en tu captura de AI Studio
+    // El SDK se encarga de que gemini-1.5-flash funcione siempre
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // 3. Preparar los datos (limpiar el base64)
     const imageData = baseBase64.split(",")[1];
     const namesList = units.map(u => u.nombre).join(", ");
     
-    const prompt = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON puro: {"found": [{"name": "Nombre", "qty": 1}]}`;
+    const prompt = `Identifica las unidades de Sorcerer TD en esta imagen. Solo usa estos nombres: [${namesList}]. Responde EXCLUSIVAMENTE con un objeto JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
     const imagePart = {
-        inlineData: {
-            data: imageData,
-            mimeType: "image/png"
-        }
+      inlineData: {
+        data: imageData,
+        mimeType: "image/png"
+      }
     };
 
-    try {
-        // 4. Llamada directa a Google (el SDK gestiona el CORS por ti)
-        const result = await model.generateContent([prompt, imagePart]);
-        const response = await result.response;
-        let text = response.text();
+    // 4. Llamada directa (Sin Proxies, sin CORS error)
+    const result = await model.generateContent([prompt, imagePart]);
+    const response = await result.response;
+    let text = response.text();
 
-        // 5. Limpiar y parsear
-        text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-        return JSON.parse(text);
+    // 5. Limpiamos el posible markdown
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    
+    return JSON.parse(text);
 
-    } catch (error) {
-        console.error("Error detallado:", error);
-        throw new Error("La IA falló: " + error.message);
-    }
+  } catch (error) {
+    console.error("Error en el scanner:", error);
+    throw new Error("Error al conectar con la IA: " + error.message);
+  }
 }
 
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
