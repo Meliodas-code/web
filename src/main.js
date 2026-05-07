@@ -932,7 +932,7 @@ async function scanWithGemini(baseBase64) {
   
   const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  // CAMBIO 1: Usamos la versión /v1/ (más estable)
+  // Usamos v1 (estable)
   const googleUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
@@ -946,9 +946,10 @@ async function scanWithGemini(baseBase64) {
           { inline_data: { mime_type: "image/png", data: imageBase64Only } }
         ]
       }],
-      generationConfig: { 
-        // CAMBIO 2: Escribimos responseMimeType sin guiones bajos
-        responseMimeType: "application/json", 
+      // SOLUCIÓN DEFINITIVA: Usamos todo con guiones bajos (snake_case)
+      // que es lo que el servidor espera cuando recibe un JSON manual.
+      generation_config: { 
+        response_mime_type: "application/json", 
         temperature: 0.1 
       }
     })
@@ -961,17 +962,21 @@ async function scanWithGemini(baseBase64) {
 
   const json = await resp.json();
   
-  // CAMBIO 3: Manejo de seguridad por si la IA no responde lo esperado
   if (!json.candidates || !json.candidates[0]) {
-    throw new Error("La IA no devolvió resultados. Intenta con otra foto.");
+    throw new Error("La IA no devolvió resultados.");
   }
 
   let rawText = json.candidates[0].content.parts[0].text;
-  if (rawText.includes("```json")) {
-    rawText = rawText.replace(/```json|```/g, "").trim();
-  }
   
-  return JSON.parse(rawText);
+  // Limpiamos el texto por si la IA devuelve ```json ... ```
+  rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+  
+  try {
+    return JSON.parse(rawText);
+  } catch (e) {
+    console.error("Error parseando JSON de la IA:", rawText);
+    throw new Error("La IA respondió algo que no es JSON.");
+  }
 }
 
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
