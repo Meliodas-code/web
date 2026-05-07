@@ -932,18 +932,17 @@ async function scanWithGemini(baseBase64) {
   
   const promptText = `Identifica las unidades de Sorcerer TD. Usa solo estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  // Usamos el nombre que confirmamos en el ejemplo de Python
   const modelId = "gemini-2.5-flash"; 
-
-  // Usamos v1beta que es la que soporta los modelos más nuevos
   const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_KEY}`;
   
-  // Proxy para saltar el bloqueo de CORS en GitHub Pages
-  const finalUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(googleUrl)}`;
+  // CAMBIO: Usamos un proxy que gestiona mejor los POST: "cors-proxy.htmldriven.com" 
+  // o intentamos AllOrigins de una forma que no dispare el Preflight.
+  const finalUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(googleUrl)}`;
 
   const resp = await fetch(finalUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // Quitamos los headers personalizados (Content-Type) porque a veces causan el error de CORS
+    // El proxy se encargará de pasar el cuerpo a Google
     body: JSON.stringify({
       contents: [{
         parts: [
@@ -955,19 +954,22 @@ async function scanWithGemini(baseBase64) {
   });
 
   if (!resp.ok) {
-    const errorText = await resp.text();
-    throw new Error("Fallo en la comunicación: " + errorText);
+    throw new Error("Error en el proxy: " + resp.status);
   }
 
-  const json = await resp.json();
+  const data = await resp.json();
   
-  if (!json.candidates || !json.candidates[0]) {
+  // AllOrigins mete la respuesta de Google dentro de una propiedad llamada 'contents'
+  // pero como enviamos un POST, a veces la estructura cambia. 
+  // Vamos a intentar leerlo de forma segura:
+  const resultText = data.contents; 
+  const jsonResponse = JSON.parse(resultText);
+
+  if (!jsonResponse.candidates || !jsonResponse.candidates[0]) {
     throw new Error("La IA no devolvió resultados.");
   }
 
-  let rawText = json.candidates[0].content.parts[0].text;
-  
-  // Limpiamos el JSON por si la IA añade ```json ... ```
+  let rawText = jsonResponse.candidates[0].content.parts[0].text;
   rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
   
   return JSON.parse(rawText);
