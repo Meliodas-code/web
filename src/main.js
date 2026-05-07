@@ -2,6 +2,7 @@ import { assetUrl } from "./assetUrl.js";
 import { loadUnitsAndVotes } from "./supabase/loadData.js";
 import { rarityRank, normalizeRarity } from "./rarity.js";
 import { t } from "./strings.js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 /** Lista de valores oficial (Sorcerer TD Value list). */
 const OFFICIAL_VALUE_LIST_URL =
@@ -926,24 +927,21 @@ function updateScannerCdCells(found) {
   });
 }
 
-// 1. Importa la librería oficial al principio del archivo
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-// ... (tus otras funciones y la variable units que ya tenías)
+const GEMINI_KEY = "AIzaSyAmzPFMvsZvDLGb5Hp383lOaZipYLT4Ud0";
 
 async function scanWithGemini(baseBase64) {
   try {
-    // 2. Inicializar el cliente (GEMINI_KEY debe estar definida en tu código)
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-    
-    // 3. Usar el modelo que vimos en tu captura de AI Studio
-    // El SDK se encarga de que gemini-1.5-flash funcione siempre
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+    // 1. Limpiamos la imagen
     const imageData = baseBase64.split(",")[1];
+    
+    // 2. IMPORTANTE: Usamos tu variable 'units' que ya tienes en el código
+    // Esto hace que la IA solo busque nombres que tú tengas en tu lista
     const namesList = units.map(u => u.nombre).join(", ");
     
-    const prompt = `Identifica las unidades de Sorcerer TD en esta imagen. Solo usa estos nombres: [${namesList}]. Responde EXCLUSIVAMENTE con un objeto JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+    const prompt = `Identifica las unidades de Sorcerer TD en esta imagen. Solo usa estos nombres: [${namesList}]. Responde EXCLUSIVAMENTE con un JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
     const imagePart = {
       inlineData: {
@@ -952,14 +950,13 @@ async function scanWithGemini(baseBase64) {
       }
     };
 
-    // 4. Llamada directa (Sin Proxies, sin CORS error)
+    // 3. Llamada directa
     const result = await model.generateContent([prompt, imagePart]);
     const response = await result.response;
     let text = response.text();
 
-    // 5. Limpiamos el posible markdown
+    // 4. Limpiar y devolver
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    
     return JSON.parse(text);
 
   } catch (error) {
