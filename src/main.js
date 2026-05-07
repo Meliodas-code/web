@@ -927,12 +927,16 @@ function updateScannerCdCells(found) {
 }
 
 async function scanWithGemini(baseBase64) {
+  // 1. Limpiar el base64
   const imageBase64Only = baseBase64.split(",").pop();
+  
+  // 2. Preparar la lista de nombres para que la IA elija de tus unidades
   const namesList = units.map(u => u.nombre).join(", ");
   
-  const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+  const promptText = `Identifica las unidades de Sorcerer TD en esta imagen. Solo usa estos nombres: [${namesList}]. Responde estrictamente en formato JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  // 3. URL CORREGIDA: Usamos /v1/ en lugar de /v1beta/ para evitar el error 404
+  const googleUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
   const resp = await fetch(finalUrl, {
@@ -946,7 +950,7 @@ async function scanWithGemini(baseBase64) {
         ]
       }],
       generationConfig: { 
-        response_mime_type: "application/json", 
+        responseMimeType: "application/json", 
         temperature: 0.1 
       }
     })
@@ -958,6 +962,8 @@ async function scanWithGemini(baseBase64) {
   }
 
   const json = await resp.json();
+  
+  // Extraemos el texto que devuelve la IA
   const rawText = json.candidates[0].content.parts[0].text;
   return JSON.parse(rawText);
 }
