@@ -55,6 +55,7 @@ const SCANNER_TEST_USER = "UN66467019";
 const SCANNER_TEST_PASS = "1234";
 const SCANNER_VECTOR_SIZE = 40;
 const SCANNER_MATCH_THRESHOLD = 0.76;
+const GEMINI_KEY = "YOUR_GEMINI_API_KEY_HERE";
 const CREDITS_PROFILES = [
   {
     roleKey: "credits.role_creator",
@@ -896,6 +897,82 @@ function scannerResetNoticeError() {
   scannerTesterNotice = "";
 }
 
+function parseGeminiJson(output) {
+  if (typeof output === "object" && output !== null && Array.isArray(output.found)) {
+    return output;
+  }
+  if (typeof output !== "string") return { found: [] };
+  const match = output.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Respuesta de Gemini no contiene JSON válido.");
+  try {
+    const data = JSON.parse(match[0]);
+    if (!Array.isArray(data.found)) throw new Error("El JSON de Gemini no contiene el campo found.");
+    return data;
+  } catch (err) {
+    throw new Error(`No se pudo parsear la respuesta de Gemini: ${err.message}`);
+  }
+}
+
+function updateScannerCdCells(found) {
+  const cells = document.querySelectorAll(".scanner-cd-cell");
+  cells.forEach((cell, index) => {
+    const valueEl = cell.querySelector(".scanner-cd-val");
+    const labelEl = cell.querySelector(".scanner-cd-lbl");
+    const item = found[index];
+    if (!valueEl || !labelEl) return;
+    if (item) {
+      valueEl.textContent = String(item.qty);
+      labelEl.textContent = item.name;
+    } else {
+      valueEl.textContent = "";
+      labelEl.textContent = "";
+    }
+  });
+}
+
+async function scanWithGemini(baseBase64) {
+  if (!GEMINI_KEY || GEMINI_KEY.includes("YOUR")) throw new Error("Falta la API Key de Gemini.");
+
+  const imageBase64Only = String(baseBase64).split(",").pop() || "";
+  const namesList = units.map((u) => u.nombre).join(", ");
+  const prompt = `Eres un experto en Sorcerer TD. Ignora los fondos de colores de las celdas y los brillos. Usa esta lista de nombres para identificar las unidades: [${namesList}]. Devuelve SOLO un JSON: {"found": [{"name": "Nombre Exacto", "qty": 1}]}.`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: "image/png", data: imageBase64Only } },
+          ],
+        },
+      ],
+      generationConfig: {
+        response_mime_type: "application/json",
+        temperature: 0.1,
+      },
+    }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Error en Gemini: ${resp.status} ${resp.statusText} ${text}`);
+  }
+
+  const result = await resp.json();
+  const candidate = result?.candidates?.[0];
+  const rawText =
+    candidate?.content?.find((c) => typeof c.text === "string")?.text ||
+    candidate?.content?.[0]?.parts?.find((p) => typeof p.text === "string")?.text ||
+    result?.output?.[0]?.content?.[0]?.text ||
+    result?.output ||
+    result;
+  return parseGeminiJson(rawText);
+}
+
 function scannerImageFromSrc(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -1354,7 +1431,26 @@ function buildTesterView() {
     scannerTesterAnalyzing = true;
     renderApp();
     try {
-      scannerTesterMatches = await scannerAnalyzeImageDataUrl(scannerTesterImageDataUrl);
+      const parsed = await scanWithGemini(scannerTesterImageDataUrl);
+      const matches = [];
+      const foundItems = [];
+      for (const item of parsed.found || []) {
+        const qty = Number(item.qty) || 1;
+        const unit = units.find(
+          (u) => u.nombre === item.name || u.nombre_en === item.name,
+        );
+        const row = {
+          unit:
+            unit ||
+            ({ nombre: item.name, nombre_en: item.name, valor: 0, imagen: "", rareza: "" }),
+          count: qty,
+          bestSimilarity: unit ? 1 : 0,
+        };
+        matches.push(row);
+        foundItems.push({ name: unit ? unitDisplayName(unit) : item.name, qty });
+      }
+      scannerTesterMatches = matches;
+      updateScannerCdCells(foundItems);
       if (!scannerTesterMatches.length) {
         scannerTesterNotice = t(lang, "scanner.no_matches");
       } else {
