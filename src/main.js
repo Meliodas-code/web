@@ -1409,15 +1409,14 @@ function buildTesterView() {
       return;
     }
     scannerResetNoticeError();
-    if (scannerMode === "tester") {
-      scannerTesterAnalyzing = true;  
-      renderApp();
-      try {
-        // 1. Llamamos a la IA (la función que pusimos antes)
-        const parsed = await scanWithGemini(scannerTesterImageDataUrl);
-        
-        const matches = [];
-        const foundItems = [];
+    scannerTesterAnalyzing = true;
+    renderApp();
+    try {
+      // 1. Llamamos a la IA (la función que pusimos antes)
+      const parsed = await scanWithGemini(scannerTesterImageDataUrl);
+
+      const matches = [];
+      const foundItems = [];
 
         // 2. Procesamos lo que la IA encontró
         for (const item of parsed.found || []) {
@@ -1454,7 +1453,6 @@ function buildTesterView() {
         } else {
           scannerTesterNotice = "";
         }
-
       } catch (e) {
         console.error("Error en el scanner:", e);
         scannerTesterError = "Error al conectar con la IA: " + (e.message || String(e));
@@ -1462,8 +1460,7 @@ function buildTesterView() {
         scannerTesterAnalyzing = false;
         renderApp();
       }
-    }
-  };
+    };
   const clearBtn = document.createElement("button");
   clearBtn.type = "button";
   clearBtn.className = "scanner-btn";
