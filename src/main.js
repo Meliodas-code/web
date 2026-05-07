@@ -926,53 +926,42 @@ function updateScannerCdCells(found) {
   });
 }
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 async function scanWithGemini(baseBase64) {
-  const imageBase64Only = baseBase64.split(",").pop();
-  const namesList = units.map(u => u.nombre).join(", ");
-  
-  const promptText = `Identifica las unidades de Sorcerer TD. Usa solo estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+    // 1. Inicializar la IA con tu clave
+    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+    
+    // 2. Usar el modelo que vimos en tu captura (el 2.5 o el 1.5-flash)
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  const modelId = "gemini-2.5-flash"; 
-  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_KEY}`;
-  
-  // CAMBIO: Usamos un proxy que gestiona mejor los POST: "cors-proxy.htmldriven.com" 
-  // o intentamos AllOrigins de una forma que no dispare el Preflight.
-  const finalUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(googleUrl)}`;
+    // 3. Preparar los datos (limpiar el base64)
+    const imageData = baseBase64.split(",")[1];
+    const namesList = units.map(u => u.nombre).join(", ");
+    
+    const prompt = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON puro: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  const resp = await fetch(finalUrl, {
-    method: "POST",
-    // Quitamos los headers personalizados (Content-Type) porque a veces causan el error de CORS
-    // El proxy se encargará de pasar el cuerpo a Google
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: promptText },
-          { inline_data: { mime_type: "image/png", data: imageBase64Only } }
-        ]
-      }]
-    })
-  });
+    const imagePart = {
+        inlineData: {
+            data: imageData,
+            mimeType: "image/png"
+        }
+    };
 
-  if (!resp.ok) {
-    throw new Error("Error en el proxy: " + resp.status);
-  }
+    try {
+        // 4. Llamada directa a Google (el SDK gestiona el CORS por ti)
+        const result = await model.generateContent([prompt, imagePart]);
+        const response = await result.response;
+        let text = response.text();
 
-  const data = await resp.json();
-  
-  // AllOrigins mete la respuesta de Google dentro de una propiedad llamada 'contents'
-  // pero como enviamos un POST, a veces la estructura cambia. 
-  // Vamos a intentar leerlo de forma segura:
-  const resultText = data.contents; 
-  const jsonResponse = JSON.parse(resultText);
+        // 5. Limpiar y parsear
+        text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+        return JSON.parse(text);
 
-  if (!jsonResponse.candidates || !jsonResponse.candidates[0]) {
-    throw new Error("La IA no devolvió resultados.");
-  }
-
-  let rawText = jsonResponse.candidates[0].content.parts[0].text;
-  rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-  
-  return JSON.parse(rawText);
+    } catch (error) {
+        console.error("Error detallado:", error);
+        throw new Error("La IA falló: " + error.message);
+    }
 }
 
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
