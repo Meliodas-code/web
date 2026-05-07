@@ -932,7 +932,7 @@ async function scanWithGemini(baseBase64) {
   
   const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  const googleUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
   const resp = await fetch(finalUrl, {
@@ -945,10 +945,9 @@ async function scanWithGemini(baseBase64) {
           { inline_data: { mime_type: "image/png", data: imageBase64Only } }
         ]
       }],
-      // HEMOS CAMBIADO ESTO PARA QUE COINCIDA CON LO QUE PIDE LA V1 ESTABLE
       generationConfig: { 
-        responseMimeType: "application/json",
-        temperature: 0.1
+        response_mime_type: "application/json", 
+        temperature: 0.1 
       }
     })
   });
