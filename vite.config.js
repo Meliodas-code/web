@@ -8,5 +8,9 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // AÑADIMOS ESTO PARA QUE GITHUB PAGES NO DE ERROR AL COMPILAR
+    rollupOptions: {
+      external: ["@google/generative-ai"],
+    },
   },
 });
