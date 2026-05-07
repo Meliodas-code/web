@@ -927,18 +927,17 @@ function updateScannerCdCells(found) {
   });
 }
 
-const GEMINI_KEY = "AIzaSyAmzPFMvsZvDLGb5Hp383lOaZipYLT4Ud0";
+
+
+// Borra la línea const GEMINI_KEY que está justo aquí arriba
 
 async function scanWithGemini(baseBase64) {
   try {
+    // Usamos la GEMINI_KEY que ya está definida al principio del archivo
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // 1. Limpiamos la imagen
     const imageData = baseBase64.split(",")[1];
-    
-    // 2. IMPORTANTE: Usamos tu variable 'units' que ya tienes en el código
-    // Esto hace que la IA solo busque nombres que tú tengas en tu lista
     const namesList = units.map(u => u.nombre).join(", ");
     
     const prompt = `Identifica las unidades de Sorcerer TD en esta imagen. Solo usa estos nombres: [${namesList}]. Responde EXCLUSIVAMENTE con un JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
@@ -950,12 +949,10 @@ async function scanWithGemini(baseBase64) {
       }
     };
 
-    // 3. Llamada directa
     const result = await model.generateContent([prompt, imagePart]);
     const response = await result.response;
     let text = response.text();
 
-    // 4. Limpiar y devolver
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(text);
 
