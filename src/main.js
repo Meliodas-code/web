@@ -932,8 +932,9 @@ async function scanWithGemini(baseBase64) {
   
   const promptText = `Identifica las unidades de Sorcerer TD. Usa solo estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  // URL ULTRA-SIMPLIFICADA: v1beta y modelo correcto
-  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-002:generateContent?key=${GEMINI_KEY}`;
+  // Usamos v1beta con el modelo específico que sugirió Copilot
+  // Si esto da 404, cambia "v1beta" por "v1" directamente en la línea de abajo
+  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
   const resp = await fetch(finalUrl, {
@@ -962,10 +963,15 @@ async function scanWithGemini(baseBase64) {
 
   let rawText = json.candidates[0].content.parts[0].text;
   
-  // Limpieza de Markdown por si acaso
+  // Limpiamos el Markdown por si la IA se pone creativa
   rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
   
-  return JSON.parse(rawText);
+  try {
+    return JSON.parse(rawText);
+  } catch (e) {
+    console.error("Error al parsear el JSON de la IA:", rawText);
+    throw new Error("La respuesta de la IA no es un JSON válido.");
+  }
 }
 
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
