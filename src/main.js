@@ -932,7 +932,7 @@ async function scanWithGemini(baseBase64) {
   
   const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  const googleUrl = `https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
   const resp = await fetch(finalUrl, {
