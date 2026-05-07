@@ -929,19 +929,13 @@ function updateScannerCdCells(found) {
 
 
 
-// Borra la línea const GEMINI_KEY que está justo aquí arriba
-
 async function scanWithGemini(baseBase64) {
   try {
-    // Usamos la GEMINI_KEY que ya está definida al principio del archivo
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-    // Busca esta línea y cámbiala:
-    // 1. Probemos con el nombre que SÍ reconoció antes (el que te dio 429)
-    // Pero vamos a asegurarnos de que el SDK use la ruta correcta
-    const model = genAI.getGenerativeModel({ 
-    model: "gemini-2.0-flash",
-      apiVersion: "v1" // Forzamos v1 en lugar de v1beta si es posible
-    });
+    
+    // Usamos gemini-1.5-flash-latest que es el que mejor cuota tiene
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
     const imageData = baseBase64.split(",")[1];
     const namesList = units.map(u => u.nombre).join(", ");
     
@@ -966,7 +960,6 @@ async function scanWithGemini(baseBase64) {
     throw new Error("Error al conectar con la IA: " + error.message);
   }
 }
-
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
   const canvas = document.createElement("canvas");
   canvas.width = size;
