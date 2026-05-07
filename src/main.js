@@ -932,7 +932,8 @@ async function scanWithGemini(baseBase64) {
   
   const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  const googleUrl = `https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  // CAMBIO 1: Usamos la versión /v1/ (más estable)
+  const googleUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
   const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
   const resp = await fetch(finalUrl, {
@@ -946,7 +947,8 @@ async function scanWithGemini(baseBase64) {
         ]
       }],
       generationConfig: { 
-        response_mime_type: "application/json", 
+        // CAMBIO 2: Escribimos responseMimeType sin guiones bajos
+        responseMimeType: "application/json", 
         temperature: 0.1 
       }
     })
@@ -959,7 +961,11 @@ async function scanWithGemini(baseBase64) {
 
   const json = await resp.json();
   
-  // A veces la respuesta viene con caracteres extraños de Markdown, esto lo limpia
+  // CAMBIO 3: Manejo de seguridad por si la IA no responde lo esperado
+  if (!json.candidates || !json.candidates[0]) {
+    throw new Error("La IA no devolvió resultados. Intenta con otra foto.");
+  }
+
   let rawText = json.candidates[0].content.parts[0].text;
   if (rawText.includes("```json")) {
     rawText = rawText.replace(/```json|```/g, "").trim();
@@ -967,7 +973,6 @@ async function scanWithGemini(baseBase64) {
   
   return JSON.parse(rawText);
 }
-
 
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
   const canvas = document.createElement("canvas");
