@@ -927,17 +927,21 @@ function updateScannerCdCells(found) {
 }
 
 async function scanWithGemini(baseBase64) {
-  // 1. Limpiamos el base64 para que solo sea la data
-  const imageBase64Only = baseBase64.includes(",") ? baseBase64.split(",")[1] : baseBase64;
-  
+  // 1. Limpiar la imagen
+  const imageBase64Only = baseBase64.split(",").pop();
   const namesList = units.map(u => u.nombre).join(", ");
-  const promptText = `Identifica las unidades en esta imagen de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde solo en JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+  
+  const promptText = `Identifica las unidades de Sorcerer TD. Solo usa estos nombres: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  // 2. LA URL CON PROXY (Esto engaña al navegador para que no salte el CORS)
+  const googleUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  const finalUrl = `https://corsproxy.io/?${encodeURIComponent(googleUrl)}`;
 
-  const response = await fetch(url, {
+  const resp = await fetch(finalUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json" 
+    },
     body: JSON.stringify({
       contents: [{
         parts: [
@@ -952,16 +956,17 @@ async function scanWithGemini(baseBase64) {
     })
   });
 
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error("Detalle del error de Google:", errorData);
-    throw new Error(errorData.error?.message || "Error en la API");
+  if (!resp.ok) {
+    const errorText = await resp.text();
+    // Si sale error aquí, es que el Proxy o la Key fallaron
+    throw new Error("Fallo en la comunicación: " + errorText);
   }
 
-  const result = await response.json();
-  const textoRespuesta = result.candidates[0].content.parts[0].text;
-  return JSON.parse(textoRespuesta);
+  const json = await resp.json();
+  const rawText = json.candidates[0].content.parts[0].text;
+  return JSON.parse(rawText);
 }
+
 
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
   const canvas = document.createElement("canvas");
