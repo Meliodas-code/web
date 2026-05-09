@@ -45,7 +45,7 @@ let pendingToolbarFocusRoute = /** @type {null | "calc" | "trade"} */ (null);
 let scannerCountdownTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
 
 /** Friday May 29, 2026, 20:00 PM (Spain mainland). */
-const SCANNER_LAUNCH_AT_MS = Date.parse("2026-05-08T20:00:00+02:00"); 
+const SCANNER_LAUNCH_AT_MS = Date.parse("2026-05-15T20:00:00+02:00"); 
 
 const TD_MOBILE_MQ =
   typeof window !== "undefined" && window.matchMedia
