@@ -966,7 +966,7 @@ async function scanWithGemini(base64Image) {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
+      model: "gemini-pro-vision",
       generationConfig: {
         temperature: 0,
         topP: 0.95,
