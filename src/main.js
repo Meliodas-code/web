@@ -15,6 +15,22 @@ let units = [];
 /** @type {Record<string, Record<string, number>>} */
 let vote_values = {};
 
+const VOTE_LABELS = {
+  1: "Nada",
+  2: "Fuerza",
+  3: "Velocidad",
+  4: "Alcance",
+  5: "Summoner",
+  6: "Fortune",
+  7: "Poder",
+  8: "Rápido",
+  9: "Caster 1",
+  10: "Eficiencia",
+  11: "Restricción celestial",
+  12: "Honored one",
+  13: "Caster 2",
+};
+
 let lang =
   typeof localStorage !== "undefined" &&
   localStorage.getItem("tdhub_lang") === "en"
@@ -1002,22 +1018,38 @@ async function scanWithGemini(base64Image) {
     });
 
     const imageData = base64Image.split(",")[1];
-    const namesList = units.map(u => u.nombre).join(", ");
+    const namesList = units.map((u) => u.nombre).join(", ");
     const historyBlock = buildCorrectionHistoryBlock();
     
     // PROMPT MEJORADO
     const prompt = `${historyBlock}Actúa como un experto analista visual del juego Sorcerer TD.
-    Tu tarea es identificar las unidades presentes en esta imagen basándote en esta lista: [${namesList}].
+    Tu tarea es identificar las unidades presentes en esta imagen y el logo de voto en la esquina inferior derecha de cada unidad.
+    Usa únicamente los nombres exactos de la lista: [${namesList}].
 
-    INSTRUCCIONES DE ANÁLISIS:
-    1. Busca un pequeño logo en la esquina inferior derecha de cada unidad.
-    2. Si detectas ese logo, devuelve el número de voto correspondiente (1-13).
-    3. Si no hay logo visible, devuelve 0.
-    4. IGNORA el fondo y los efectos visuales.
-    5. Responde sólo JSON válido.
+    MAPA DE VOTOS:
+    1 = Nada
+    2 = Fuerza
+    3 = Velocidad
+    4 = Alcance
+    5 = Summoner
+    6 = Fortune
+    7 = Poder
+    8 = Rápido
+    9 = Caster 1
+    10 = Eficiencia
+    11 = Restricción celestial
+    12 = Honored one
+    13 = Caster 2
+
+    REGLAS:
+    1. Identifica cada unidad por el nombre exacto de la lista. No inventes nombres.
+    2. Si la unidad tiene un logo de voto, devuelve el número correcto según el mapa anterior.
+    3. Si la unidad no muestra ningún logo, devuelve 0.
+    4. Ignora el fondo, efectos de habilidad y otros elementos que no sean el personaje.
+    5. Si no estás seguro del voto, usa 0 en lugar de adivinar.
+    6. Devuelve solo JSON válido sin texto adicional.
 
     RESPUESTA:
-    Responde únicamente con un objeto JSON puro.
     Formato: {"found": [{"name": "Nombre exacto de la lista", "qty": 1, "vote": 0}]}`;
 
     const result = await model.generateContent([
@@ -1605,14 +1637,16 @@ function buildTesterView() {
       const nm = unitDisplayName(row.unit);
       const thumbSrc = row.unit.imagen ? assetUrl(row.unit.imagen) : "";
       const voteImg = row.voteNumber > 0 ? assetUrl(`assets/votos/voto${row.voteNumber}.png`) : "";
+      const voteLabel = row.voteNumber > 0 ? VOTE_LABELS[row.voteNumber] || String(row.voteNumber) : "Sin logo";
       item.innerHTML = `
         <div class="scanner-result-thumb-wrap">
           ${thumbSrc ? `<img class="scanner-result-thumb" src="${escapeHtml(thumbSrc)}" alt="${escapeHtml(nm)}" />` : ""}
-          ${voteImg ? `<img class="scanner-result-vote" src="${escapeHtml(voteImg)}" alt="Voto ${row.voteNumber}" />` : ""}
+          ${voteImg ? `<img class="scanner-result-vote" src="${escapeHtml(voteImg)}" alt="Voto ${escapeHtml(voteLabel)}" />` : ""}
         </div>
         <div class="scanner-result-meta">
           <span class="name">${escapeHtml(nm)} x${row.count}</span>
           <span class="sim">${escapeHtml(t(lang, "scanner.confidence"))}: ${(row.bestSimilarity * 100).toFixed(1)}%</span>
+          <span class="sim">${escapeHtml(voteLabel)}</span>
         </div>
         <span class="val">${rowValue}</span>
       `;
@@ -1689,7 +1723,7 @@ function buildTesterView() {
       for (let i = 1; i <= 13; i++) {
         const option = document.createElement("option");
         option.value = String(i);
-        option.textContent = String(i);
+        option.textContent = VOTE_LABELS[i] || String(i);
         voteSelect.appendChild(option);
       }
     }
@@ -1714,7 +1748,7 @@ function buildTesterView() {
         renderApp();
       }
       if (correctionNote) {
-        correctionNote.textContent = `Guardado: Si ves [${incorrect}], en realidad es [${correct}]${selectedVote ? ` con voto ${selectedVote}` : ""}.`;
+        correctionNote.textContent = `Guardado: Si ves [${incorrect}], en realidad es [${correct}]${selectedVote ? ` con voto ${VOTE_LABELS[selectedVote] || selectedVote}` : ""}.`;
       }
     };
   }
