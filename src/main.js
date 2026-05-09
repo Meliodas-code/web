@@ -929,26 +929,37 @@ function updateScannerCdCells(found) {
     }
   });
 }
-
 async function scanWithGemini(base64Image) {
   try {
-    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-    // Usamos el que te dio éxito antes
-    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+    const genAI = new GoogleGenerativeAI(MI_LLAVE_OCULTA);
+    
+    // Configuramos el modelo para que sea PRECISO (temperatura 0.1)
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-3.1-flash-lite",
+      generationConfig: {
+        temperature: 0.1,
+        topP: 0.1,
+      }
+    });
 
     const imageData = base64Image.split(",")[1];
-    
-    // Lista de nombres de tus unidades (esto ya lo tenías)
     const namesList = units.map(u => u.nombre).join(", ");
     
-    // Prompt ultra-detallado para que el modelo Lite no se pierda
-    const prompt = `Analiza esta imagen del juego Sorcerer TD. 
-    Tu objetivo es identificar qué unidades de esta lista están presentes: [${namesList}].
+    // PROMPT MEJORADO
+    const prompt = `Actúa como un experto analista visual del juego Sorcerer TD. 
+    Tu tarea es identificar las unidades presentes en esta imagen basándote en esta lista: [${namesList}].
+
+    INSTRUCCIONES DE ANÁLISIS:
+    1. IGNORA EL FONDO: Céntrate exclusivamente en las siluetas y personajes. No cuentes elementos del escenario ni efectos de ataques.
+    2. DIFERENCIACIÓN CRÍTICA:
+       - GOJO vs GOJO EVO: Mira el pelo. Aunque son casi idénticos, sus peinados y el aura son distintos. No los confundas.
+       - GETO vs KENJAKU: Fíjate en la frente y los detalles de la cara. Son muy parecidos pero son unidades distintas.
+    3. DETALLES VISUALES: Mira la ropa, las armas y la postura de cada silueta.
+    4. SIN INVENTAR: Si una unidad no está en la lista [${namesList}], ignórala.
     
-    REGLAS:
-    1. Si ves una unidad, cuenta cuántas hay.
-    2. Responde ÚNICAMENTE en formato JSON.
-    3. Formato: {"found": [{"name": "Nombre exacto", "qty": 1}]}`;
+    RESPUESTA:
+    Responde ÚNICAMENTE con un objeto JSON puro.
+    Formato: {"found": [{"name": "Nombre exacto de la lista", "qty": 1}]}`;
 
     const result = await model.generateContent([
       prompt,
@@ -956,25 +967,22 @@ async function scanWithGemini(base64Image) {
     ]);
 
     const response = await result.response;
-    let text = response.text();
+    let text = response.text().replace(/```json|```/g, "").trim();
     
-    // Limpiamos el texto por si la IA pone basura
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    // Mostramos en consola qué ha pensado la IA por si falla algo
+    console.log("Análisis de la IA:", text);
     
     const data = JSON.parse(text);
-    
+
     if (!data.found || data.found.length === 0) {
-      alert("La IA no vio unidades. Intenta que la captura sea más clara.");
+      console.log("No se detectaron unidades en esta captura.");
     }
-    
+
     return data;
 
   } catch (error) {
-    console.error("Error en IA:", error);
-    if (error.message.includes("403")) {
-        alert("Google bloqueó la clave por seguridad. Tendrás que crear una nueva y trocearla mejor.");
-    }
-    throw error;
+    console.error("Error detallado:", error);
+    throw new Error("Fallo en el escaneo: " + error.message);
   }
 }
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
