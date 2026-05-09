@@ -978,12 +978,28 @@ function scannerResetNoticeError() {
 
 function parseGeminiJson(output) {
   try {
-    // Buscamos el JSON dentro del texto por si la IA añade algo fuera
-    const match = output.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("No se encontró JSON");
-    return JSON.parse(match[0]);
+    // Limpia espacios y caracteres especiales
+    let cleaned = output.trim();
+    
+    // Busca el objeto JSON dentro del texto (por si hay prefijo/sufijo)
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) {
+      console.warn("No se encontró JSON en la respuesta:", cleaned);
+      return { found: [] };
+    }
+    
+    const jsonStr = match[0];
+    const data = JSON.parse(jsonStr);
+    
+    // Valida estructura básica
+    if (!data || typeof data !== "object" || !Array.isArray(data.found)) {
+      console.warn("Estructura JSON inválida:", data);
+      return { found: [] };
+    }
+    
+    return data;
   } catch (err) {
-    console.error("Error parseando JSON de Gemini:", output);
+    console.error("Error parseando JSON de Gemini:", err.message, "Input:", output.slice(0, 200));
     return { found: [] };
   }
 }
@@ -1021,36 +1037,51 @@ async function scanWithGemini(base64Image) {
     const namesList = units.map((u) => u.nombre).join(", ");
     const historyBlock = buildCorrectionHistoryBlock();
     
-    // PROMPT MEJORADO
-    const prompt = `${historyBlock}Actúa como un experto analista visual del juego Sorcerer TD.
-    Tu tarea es identificar las unidades presentes en esta imagen y el logo de voto en la esquina inferior derecha de cada unidad.
-    Usa únicamente los nombres exactos de la lista: [${namesList}].
+    // PROMPT ULTRA MEJORADO - Máxima precisión
+    const prompt = `${historyBlock}TAREA: Analizar imagen de Sorcerer TD y detectar unidades + votos vinculantes.
 
-    MAPA DE VOTOS:
-    1 = Nada
-    2 = Fuerza
-    3 = Velocidad
-    4 = Alcance
-    5 = Summoner
-    6 = Fortune
-    7 = Poder
-    8 = Rápido
-    9 = Caster 1
-    10 = Eficiencia
-    11 = Restricción celestial
-    12 = Honored one
-    13 = Caster 2
+LISTA VÁLIDA DE UNIDADES (usa SOLO estas, no inventes):
+${namesList}
 
-    REGLAS:
-    1. Identifica cada unidad por el nombre exacto de la lista. No inventes nombres.
-    2. Si la unidad tiene un logo de voto, devuelve el número correcto según el mapa anterior.
-    3. Si la unidad no muestra ningún logo, devuelve 0.
-    4. Ignora el fondo, efectos de habilidad y otros elementos que no sean el personaje.
-    5. Si no estás seguro del voto, usa 0 en lugar de adivinar.
-    6. Devuelve solo JSON válido sin texto adicional.
+INSTRUCCIONES CRÍTICAS:
+1. IDENTIFICACIÓN DE UNIDADES:
+   - Observa SOLO los personajes principales (siluetas grandes).
+   - Ignora completamente: fondos, efectos de batalla, proyectiles, partículas, sombras.
+   - Si hay duda sobre una unidad, NO la reportes.
+   - Compara cada personaje detectado con la lista exacta. Si no coincide, no lo incluyas.
 
-    RESPUESTA:
-    Formato: {"found": [{"name": "Nombre exacto de la lista", "qty": 1, "vote": 0}]}`;
+2. DETECCIÓN DE VOTOS VINCULANTES:
+   - UBICACIÓN: Busca en la ESQUINA INFERIOR DERECHA del personaje (no del fondo).
+   - ASPECTO: Un pequeño icono/logo distintivo (puede ser un símbolo, runa, emblema).
+   - CÓMO IDENTIFICAR: Cada voto tiene un icono visual DIFERENTE y ÚNICO:
+     * 1 (Nada) = Sin logo (el personaje está limpio)
+     * 2 (Fuerza) = Icono con símbolo de poder/músculo
+     * 3 (Velocidad) = Icono con líneas de velocidad/rayo
+     * 4 (Alcance) = Icono con expansión/círculos
+     * 5 (Summoner) = Icono con espiritales/seres
+     * 6 (Fortune) = Icono con monedas/estrella
+     * 7 (Poder) = Icono con fuego/energía
+     * 8 (Rápido) = Icono con velocidad/flash
+     * 9 (Caster 1) = Icono con magia/hechizo
+     * 10 (Eficiencia) = Icono con engranaje/optimización
+     * 11 (Restricción celestial) = Icono con restricción/cadenas celestes
+     * 12 (Honored one) = Icono con corona/honor
+     * 13 (Caster 2) = Icono con magia avanzada/cristal
+
+3. REGLAS DE CONSERVADURISMO:
+   - Si NO ves claramente un logo diferenciado, devuelve 0.
+   - Si tienes 50% duda, devuelve 0.
+   - Es mejor perder un voto que reportar uno incorrecto.
+   - Cantidad: reporta el número EXACTO de personajes visibles.
+
+4. FORMATO DE SALIDA (CRÍTICO):
+   - SOLO JSON válido.
+   - NADA de explicaciones, prefacio o comentarios.
+   - Campo "vote" OBLIGATORIO en cada item (0 si no hay logo).
+   - Usa "name" EXACTO de la lista.
+
+RESPUESTA:
+{"found": [{"name": "Nombre exacto", "qty": 1, "vote": 0}]}`;
 
     const result = await model.generateContent([
       prompt,
@@ -1060,13 +1091,23 @@ async function scanWithGemini(base64Image) {
     const response = await result.response;
     let text = response.text().replace(/```json|```/g, "").trim();
     
-    // Mostramos en consola qué ha pensado la IA por si falla algo
-    console.log("Análisis de la IA:", text);
+    console.log("Respuesta bruta de Gemini:", text);
     
     const data = parseGeminiJson(text);
 
+    // Validar y normalizar respuesta
+    if (data.found && Array.isArray(data.found)) {
+      data.found = data.found.map((item) => ({
+        name: String(item.name || "").trim(),
+        qty: Math.max(1, Number(item.qty) || 1),
+        vote: Math.max(0, Math.min(13, Number(item.vote) !== undefined ? Number(item.vote) : 0)),
+      }));
+    }
+
     if (!data.found || data.found.length === 0) {
       console.log("No se detectaron unidades en esta captura.");
+    } else {
+      console.log("Unidades detectadas:", JSON.stringify(data.found, null, 2));
     }
 
     return data;
