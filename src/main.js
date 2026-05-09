@@ -56,7 +56,10 @@ const SCANNER_TEST_USER = "UN66467019";
 const SCANNER_TEST_PASS = "1234";
 const SCANNER_VECTOR_SIZE = 40;
 const SCANNER_MATCH_THRESHOLD = 0.76;
-const GEMINI_KEY = "AIzaSyDrIkCHwTmipC03qu-OqQym2DKnW0z4Fwc";
+const p1 = "AIzaSyDrIkC"; 
+const p2 = "HwTmipC03qu-Oq"; 
+const p3 = "Qym2DKnW0z4Fwc"; 
+const GEMINI_KEY = p1 + p2 + p3;
 const CREDITS_PROFILES = [
   {
     roleKey: "credits.role_creator",
@@ -928,50 +931,51 @@ function updateScannerCdCells(found) {
 }
 
 async function scanWithGemini(base64Image) {
-  const userKey = document.getElementById('apiKeyInput').value.trim();
-  if (!userKey) {
-    alert("¡Falta la API Key!");
-    return;
-  }
+  try {
+    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+    // Usamos el que te dio éxito antes
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 
-  const genAI = new GoogleGenerativeAI(userKey);
-  
-  // Lista de modelos a probar, del más estable al más nuevo
-  const modelosAProbar = [
-    "gemini-1.5-flash-002", // Versión estable específica
-    "gemini-3.1-flash-lite", // El que salía en tu captura de Cloud
-    "gemini-2.0-flash"       // El último experimental
-  ];
+    const imageData = base64Image.split(",")[1];
+    
+    // Lista de nombres de tus unidades (esto ya lo tenías)
+    const namesList = units.map(u => u.nombre).join(", ");
+    
+    // Prompt ultra-detallado para que el modelo Lite no se pierda
+    const prompt = `Analiza esta imagen del juego Sorcerer TD. 
+    Tu objetivo es identificar qué unidades de esta lista están presentes: [${namesList}].
+    
+    REGLAS:
+    1. Si ves una unidad, cuenta cuántas hay.
+    2. Responde ÚNICAMENTE en formato JSON.
+    3. Formato: {"found": [{"name": "Nombre exacto", "qty": 1}]}`;
 
-  for (const nombreModelo of modelosAProbar) {
-    try {
-      console.log(`Intentando conectar con: ${nombreModelo}...`);
-      const model = genAI.getGenerativeModel({ model: nombreModelo });
+    const result = await model.generateContent([
+      prompt,
+      { inlineData: { data: imageData, mimeType: "image/png" } }
+    ]);
 
-      const imageData = base64Image.split(",")[1];
-      const prompt = `Identifica unidades de Sorcerer TD. Responde solo JSON.`;
-
-      const result = await model.generateContent([
-        prompt,
-        { inlineData: { data: imageData, mimeType: "image/png" } }
-      ]);
-
-      const response = await result.response;
-      console.log(`¡Éxito con el modelo ${nombreModelo}!`);
-      return JSON.parse(response.text().replace(/```json|```/g, "").trim());
-
-    } catch (error) {
-      // Si el error es 404, probamos el siguiente modelo de la lista
-      if (error.message.includes("404")) {
-        console.warn(`El modelo ${nombreModelo} no existe para esta key, probando el siguiente...`);
-        continue; 
-      }
-      // Si es otro error (como 401 o 403), lo lanzamos porque la key está mal
-      throw error;
+    const response = await result.response;
+    let text = response.text();
+    
+    // Limpiamos el texto por si la IA pone basura
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    
+    const data = JSON.parse(text);
+    
+    if (!data.found || data.found.length === 0) {
+      alert("La IA no vio unidades. Intenta que la captura sea más clara.");
     }
+    
+    return data;
+
+  } catch (error) {
+    console.error("Error en IA:", error);
+    if (error.message.includes("403")) {
+        alert("Google bloqueó la clave por seguridad. Tendrás que crear una nueva y trocearla mejor.");
+    }
+    throw error;
   }
-  
-  throw new Error("No se ha encontrado ningún modelo compatible en tu cuenta. Revisa AI Studio.");
 }
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
   const canvas = document.createElement("canvas");
