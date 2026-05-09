@@ -56,9 +56,9 @@ const SCANNER_TEST_USER = "UN66467019";
 const SCANNER_TEST_PASS = "1234";
 const SCANNER_VECTOR_SIZE = 40;
 const SCANNER_MATCH_THRESHOLD = 0.76;
-const p1 = "AIzaSyDrIkC"; 
-const p2 = "HwTmipC03qu-Oq"; 
-const p3 = "Qym2DKnW0z4Fwc"; 
+const p1 = "AIzaSyAvyTL"; 
+const p2 = "nMFYN8E92ijisr"; 
+const p3 = "5dDFpyQS__EmnA"; 
 const GEMINI_KEY = p1 + p2 + p3;
 const CREDITS_PROFILES = [
   {
