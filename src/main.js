@@ -932,7 +932,9 @@ async function scanWithGemini(baseBase64) {
     
     // Este es el único que NO te da 404. 
     // Si te da 429, es solo cuestión de ESPERAR TIEMPO.
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    
+    // Este modelo es el que tiene la cuota gratuita abierta y estable
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const imageData = baseBase64.split(",")[1];
     const namesList = units.map(u => u.nombre).join(", ");
