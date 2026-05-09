@@ -979,37 +979,51 @@ async function scanWithGemini(base64Image) {
     const namesList = units.map(u => u.nombre).join(", ");
     const historyBlock = buildCorrectionHistoryBlock();
 
-    const prompt = `You are analyzing a screenshot from the game Sorcerer TD. Your task is to identify EVERY unit and its associated VOTE level visible in the image.
+    const prompt = `${historyBlock}
+# INSTRUCCIONES DE ESCANEO PROFESIONAL - SORCERER TD #
 
-CRITICAL INSTRUCTIONS:
-1. SCAN THE ENTIRE IMAGE methodically (left to right, top to bottom)
-2. For EACH character/unit you see:
-   - Identify the unit NAME by comparing its appearance with this list: [${namesList}]
-   - Look for a SMALL ICON/IMAGE in the corner of each unit card (usually bottom-left or top-right area) - this is the VOTE indicator
-   - The VOTE is a numbered image showing 1-13 (Vote 1, Vote 2, ..., Vote 13)
-   - If you see the vote icon, identify which number it is (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, or 13)
-   - If NO vote icon is visible, use vote 1 as default
+Eres un sistema de reconocimiento de imágenes especializado en Sorcerer Tower Defense. Tu objetivo es identificar unidades y sus "Votes" (encantamientos) basándote en la Wiki oficial.
 
-UNIT IDENTIFICATION TIPS:
-- Look at character silhouettes, armor, accessories, weapons, and color palette
-- Similar units may differ by small details: evolution forms have different accessories
-- Check character height, build, and distinctive features
+## 1. IDENTIFICACIÓN DE UNIDADES
+- Usa esta lista de nombres oficiales: [${namesList}].
+- PRECISIÓN: Si una unidad tiene aura o efectos visuales adicionales, busca la versión "Evo" en la lista.
+- Si ves a Gojo con vendas es la versión base; si tiene los ojos descubiertos y pelo hacia arriba, es la versión final.
 
-VOTE IDENTIFICATION TIPS:
-- The vote icon typically appears as a small numbered badge/circle
-- Vote numbers usually go from 1-13
-- Some cards might not show a visible vote (assume vote 1)
-- Count the vote number shown in the indicator
+## 2. IDENTIFICACIÓN DE VOTOS (POR DISEÑO Y COLOR)
+Cada unidad tiene un icono circular en la esquina. Identifícalo por su apariencia visual única según la Wiki:
+- Voto 1 (Base): Sin icono . -> "voto"
+- Voto 2 (Pulo Rojo - Fuerza): Icono rojo con símbolo de puño. -> "voto2"
+- Voto 3 (Azul con 3 rayas - velocidad): Icono azul con símbolo de ala. -> "voto3"
+- Voto 4 (morado puntero - Alcanze): Icono morado con símbolo de mirilla. -> "voto4"
+- Voto 5 (Verde circular - Summoner): Icono circular con símbolo de ojo/energía. -> "voto5"
+- Voto 6 (Dorado monedas - Fortune): Icono amarillo brillante con símbolo de monedas apliadas. -> "voto6"
+- Voto 7 (Martillo rojo - fuerza): Icono rojo con símbolo de martillo. -> "voto7"
+- Voto 8 (Tornado azul - Rapido): Icono azul claro con forma de tornado. -> "voto8"
+- Voto 9 (Palo con punta de energia azul - Caster): Icono de vara/varita con punta de estrella azul. -> "voto9"
+- Voto 10 (engranaje gris con simbolo del dolar en el centro - Eficiencia): Icono gris con forma de engranaje con simbolo del dolar. -> "voto10"
+- Voto 11 (Espada/Vara de color gris en medio blanco arriba y oscuro abajo - Restriccion Celestial): Icono con forma de espada o vara, mitad superior blanca y mitad inferior gris oscuro. -> "voto11"
+- Voto 12 /Bola roja con forma de remolino hacia el centro - Honored One): Icono rojo con forma de bola o esfera con un remolino que gira hacia el centro. -> "voto12"
+- Voto 13 (Vara azul con estrella en la punta con un 2 al lado - Caster2): Icono con forma de vara o varita, con una estrella en la punta y un número 2 al lado. -> "voto13"
 
-OUTPUT FORMAT (strict JSON):
-{"found": [
-  {"name": "Unit Name", "vote": 1, "qty": 1},
-  {"name": "Another Unit", "vote": 3, "qty": 1}
-]}
+## 3. REGLAS DE EXTRACCIÓN
+- Analiza la imagen fila por fila, de izquierda a derecha.
+- Si una unidad es borrosa pero reconocible por su paleta de colores, inclúyela.
+- El campo "vote" debe ser el ID exacto (ej: "voto7", no "7").
 
-${historyBlock}
+## 4. FORMATO DE SALIDA (JSON PURO)
+{
+  "found": [
+    {
+      "name": "Nombre de la Unidad",
+      "vote": "votoX",
+      "qty": 1
+    }
+  ]
+}
 
-DO NOT include any units you're unsure about unless they clearly match the list. Each entry = 1 unit visible.`;
+REGLA DE ORO: No inventes unidades. Si no está en [${namesList}], ignórala.`;
+
+
 
     const result = await model.generateContent([
       prompt,
