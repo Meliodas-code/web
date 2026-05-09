@@ -1971,7 +1971,41 @@ button:focus-visible,
   box-shadow: 0 0 12px #f59e0b;
   animation: scanner-pulse 1.4s ease-in-out infinite;
 }
+/* Colores de borde por Rareza */
 
+/* Mítico (Rojo) */
+.unit-card[data-rarity="mythic"] {
+  border: 1px solid #ff4747 !important;
+  box-shadow: inset 0 0 10px rgba(255, 71, 71, 0.15);
+}
+
+/* Grado Especial / Special Grade (Dorado) */
+.unit-card[data-rarity="special grade"] {
+  border: 1px solid #ffda47 !important;
+  box-shadow: inset 0 0 10px rgba(255, 218, 71, 0.15);
+}
+
+/* Legendario (Morado) */
+.unit-card[data-rarity="legendary"] {
+  border: 1px solid #a855f7 !important;
+}
+
+/* Grado Ascendido / Ascended (Cian/Azul claro) */
+.unit-card[data-rarity="ascended grade"] {
+  border: 1px solid #22d3ee !important;
+}
+
+/* Épico (Amarillo suave) */
+.unit-card[data-rarity="epic"] {
+  border: 1px solid #fbbf24 !important;
+}
+
+/* Efecto al pasar el ratón (opcional) */
+.unit-card:hover {
+  filter: brightness(1.1);
+  transform: scale(1.02);
+  transition: all 0.2s ease;
+}
 @keyframes scanner-pulse {
   0%,
   100% {
