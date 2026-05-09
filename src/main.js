@@ -965,16 +965,15 @@ async function scanWithGemini(base64Image) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
-    const model = genAI.getGenerativeModel({
+    // En la configuración del modelo
+    const model = genAI.getGenerativeModel({ 
       model: "gemini-flash-latest",
       generationConfig: {
-        temperature: 0,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 2000,
-      }
-    });
-
+      maxOutputTokens: 2048, // Aumenta esto si estaba bajo
+      temperature: 0.1,      // Bájalo para que sea más preciso y no divague
+      responseMimeType: "application/json" // Esto obliga a la IA a cerrar siempre el JSON
+    }
+  });
     const imageData = base64Image.split(",")[1];
     const namesList = units.map(u => u.nombre).join(", ");
     const historyBlock = buildCorrectionHistoryBlock();
