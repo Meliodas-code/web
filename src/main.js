@@ -964,50 +964,52 @@ function updateScannerCdCells(found) {
 async function scanWithGemini(base64Image) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-    
-    // Configuramos el modelo para que sea PRECISO (temperatura 0.1)
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-3.1-flash-lite",
+
+    const model = genAI.getGenerativeModel({
+      model: "gemini-3.1-flash",
       generationConfig: {
-        temperature: 0.1,
-        topP: 0.1,
+        temperature: 0,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 2000,
       }
     });
 
     const imageData = base64Image.split(",")[1];
     const namesList = units.map(u => u.nombre).join(", ");
     const historyBlock = buildCorrectionHistoryBlock();
-    // Busca la parte donde se hace el .map de las unidades en el Trade
-        // Línea 448 aprox.
-    const html = filtered.map(u => {
-      const rClass = normalizeRarity(u.rareza); // Añade esta línea
-        return `
-          <div class="unit-card" data-rarity="${rClass}" onclick="handleTradeAdd('${pickerSide}', '${u.nombre}')">
-            <img src="${u.imagen}" alt="${u.nombre}" loading="lazy">
-            <div class="unit-info">
-              <p class="unit-name">${u.nombre}</p>
-              <p class="unit-value">${formatValue(u.valor)}</p>
-            </div>
-          </div>
-        `;
-      }).join("");
-    
-    
-    // PROMPT MEJORADO
-    const prompt = `Analiza esta imagen de Sorcerer TD como si fueras un inspector de seguridad. No puedes saltarte ninguna unidad.
 
-    PASOS A SEGUIR:
-      1. Escanea la imagen de izquierda a derecha y de arriba a abajo.
-      2. Identifica cada silueta humana o personaje que veas, sin importar lo pequeña que sea.
-      3. Compara cada silueta con tu lista: [${namesList}].
-      4. IMPORTANTE: Fíjate en los accesorios (capas, vendas, armas) para diferenciar unidades similares como Gojo y Gojo Evo.
+    const prompt = `You are analyzing a screenshot from the game Sorcerer TD. Your task is to identify EVERY unit and its associated VOTE level visible in the image.
 
-    REGLAS DE ORO:
-      - Si no estás seguro de una unidad, descríbela mentalmente y elige la que más coincida de la lista oficial.
-      - NO ignores personajes que estén en los bordes de la foto.
-      - Si hay 5 personajes, debes devolver 5 resultados.
+CRITICAL INSTRUCTIONS:
+1. SCAN THE ENTIRE IMAGE methodically (left to right, top to bottom)
+2. For EACH character/unit you see:
+   - Identify the unit NAME by comparing its appearance with this list: [${namesList}]
+   - Look for a SMALL ICON/IMAGE in the corner of each unit card (usually bottom-left or top-right area) - this is the VOTE indicator
+   - The VOTE is a numbered image showing 1-13 (Vote 1, Vote 2, ..., Vote 13)
+   - If you see the vote icon, identify which number it is (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, or 13)
+   - If NO vote icon is visible, use vote 1 as default
 
-    Responde estrictamente en JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+UNIT IDENTIFICATION TIPS:
+- Look at character silhouettes, armor, accessories, weapons, and color palette
+- Similar units may differ by small details: evolution forms have different accessories
+- Check character height, build, and distinctive features
+
+VOTE IDENTIFICATION TIPS:
+- The vote icon typically appears as a small numbered badge/circle
+- Vote numbers usually go from 1-13
+- Some cards might not show a visible vote (assume vote 1)
+- Count the vote number shown in the indicator
+
+OUTPUT FORMAT (strict JSON):
+{"found": [
+  {"name": "Unit Name", "vote": 1, "qty": 1},
+  {"name": "Another Unit", "vote": 3, "qty": 1}
+]}
+
+${historyBlock}
+
+DO NOT include any units you're unsure about unless they clearly match the list. Each entry = 1 unit visible.`;
 
     const result = await model.generateContent([
       prompt,
@@ -1016,10 +1018,9 @@ async function scanWithGemini(base64Image) {
 
     const response = await result.response;
     let text = response.text().replace(/```json|```/g, "").trim();
-    
-    // Mostramos en consola qué ha pensado la IA por si falla algo
+
     console.log("Análisis de la IA:", text);
-    
+
     const data = JSON.parse(text);
 
     if (!data.found || data.found.length === 0) {
@@ -1491,22 +1492,24 @@ function buildTesterView() {
         // 2. Procesamos lo que la IA encontró
         for (const item of parsed.found || []) {
           const qty = Number(item.qty) || 1;
-          
+          const voteNum = Math.max(1, Math.min(13, Number(item.vote) || 1));
+
           // Buscamos en tu lista de unidades por nombre
-          const unit = units.find(u => 
+          const unit = units.find(u =>
             u.nombre === item.name || u.nombre_en === item.name
           );
 
           matches.push({
             unit: unit || { nombre: item.name, valor: 0, imagen: "", rareza: "" },
             count: qty,
+            vote: voteNum,
             bestSimilarity: unit ? 1 : 0
           });
 
           // Esto es para que se vean los nombres en las celdas
-          foundItems.push({ 
-            name: unit ? (lang === "es" ? unit.nombre : unit.nombre_en) : item.name, 
-            qty 
+          foundItems.push({
+            name: unit ? (lang === "es" ? unit.nombre : unit.nombre_en) : item.name,
+            qty
           });
         }
         
@@ -1584,7 +1587,7 @@ function buildTesterView() {
       const nm = unitDisplayName(row.unit);
       item.innerHTML = `
         <span class="name">${escapeHtml(nm)} x${row.count}</span>
-        <span class="sim">${escapeHtml(t(lang, "scanner.confidence"))}: ${(row.bestSimilarity * 100).toFixed(1)}%</span>
+        <span class="sim">V${row.vote || 1}</span>
         <span class="val">${Number(row.unit.valor) || 0}</span>
       `;
       list.appendChild(item);
