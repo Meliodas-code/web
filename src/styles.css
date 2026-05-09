@@ -1603,13 +1603,49 @@ button:focus-visible,
 
 .scanner-result-item {
   display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 0.55rem;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem;
   align-items: center;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.03);
   padding: 0.5rem 0.65rem;
+}
+
+.scanner-result-thumb-wrap {
+  position: relative;
+  width: 3.3rem;
+  min-width: 3.3rem;
+  height: 3.3rem;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.9);
+  display: grid;
+  place-items: center;
+}
+
+.scanner-result-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scanner-result-vote {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.25rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(20, 25, 40, 0.92);
+  padding: 0.12rem;
+  box-sizing: border-box;
+}
+
+.scanner-result-meta {
+  display: grid;
+  gap: 0.25rem;
 }
 
 .scanner-result-item .name {
