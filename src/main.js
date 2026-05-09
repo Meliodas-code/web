@@ -931,7 +931,7 @@ function updateScannerCdCells(found) {
 }
 async function scanWithGemini(base64Image) {
   try {
-    const genAI = new GoogleGenerativeAI(MI_LLAVE_OCULTA);
+    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
     
     // Configuramos el modelo para que sea PRECISO (temperatura 0.1)
     const model = genAI.getGenerativeModel({ 
