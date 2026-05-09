@@ -927,42 +927,51 @@ function updateScannerCdCells(found) {
   });
 }
 
-
-
-// NO pongas ninguna llave aquí arriba. Déjalo vacío.
-
 async function scanWithGemini(base64Image) {
-  // 1. Obtenemos la llave que pegaste en la caja de texto
   const userKey = document.getElementById('apiKeyInput').value.trim();
-
   if (!userKey) {
-    alert("¡Error! Primero pega tu API Key en el cuadro superior de la web.");
+    alert("¡Falta la API Key!");
     return;
   }
 
-  try {
-    const genAI = new GoogleGenerativeAI(userKey);
-    
-    // Usamos el 1.5 Flash que es el más rápido
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const genAI = new GoogleGenerativeAI(userKey);
+  
+  // Lista de modelos a probar, del más estable al más nuevo
+  const modelosAProbar = [
+    "gemini-1.5-flash-002", // Versión estable específica
+    "gemini-3.1-flash-lite", // El que salía en tu captura de Cloud
+    "gemini-2.0-flash"       // El último experimental
+  ];
 
-    const imageData = base64Image.split(",")[1];
-    const prompt = "Identifica las unidades en esta imagen..."; // Tu prompt actual
+  for (const nombreModelo of modelosAProbar) {
+    try {
+      console.log(`Intentando conectar con: ${nombreModelo}...`);
+      const model = genAI.getGenerativeModel({ model: nombreModelo });
 
-    const result = await model.generateContent([
-      prompt,
-      { inlineData: { data: imageData, mimeType: "image/png" } }
-    ]);
+      const imageData = base64Image.split(",")[1];
+      const prompt = `Identifica unidades de Sorcerer TD. Responde solo JSON.`;
 
-    const response = await result.response;
-    return JSON.parse(response.text().replace(/```json|```/g, "").trim());
+      const result = await model.generateContent([
+        prompt,
+        { inlineData: { data: imageData, mimeType: "image/png" } }
+      ]);
 
-  } catch (error) {
-    if (error.message.includes("403")) {
-      alert("API Key inválida o bloqueada. Crea una nueva en AI Studio.");
+      const response = await result.response;
+      console.log(`¡Éxito con el modelo ${nombreModelo}!`);
+      return JSON.parse(response.text().replace(/```json|```/g, "").trim());
+
+    } catch (error) {
+      // Si el error es 404, probamos el siguiente modelo de la lista
+      if (error.message.includes("404")) {
+        console.warn(`El modelo ${nombreModelo} no existe para esta key, probando el siguiente...`);
+        continue; 
+      }
+      // Si es otro error (como 401 o 403), lo lanzamos porque la key está mal
+      throw error;
     }
-    throw error;
   }
+  
+  throw new Error("No se ha encontrado ningún modelo compatible en tu cuenta. Revisa AI Studio.");
 }
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
   const canvas = document.createElement("canvas");
