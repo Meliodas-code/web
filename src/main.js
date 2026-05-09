@@ -926,48 +926,42 @@ function updateScannerCdCells(found) {
     }
   });
 }
-// 1. Añade aquí todas las llaves que crees en AI Studio
-const GEMINI_KEYS = [
-  "AIzaSyAmzPFMvsZvDLGb5Hp383lOaZipYLT4Ud0",
-  "AIzaSyDrIkCHwTmipC03qu-OqQym2DKnW0z4Fwc",
-  "AIzaSyB2-O2uzqo7YTpvZM5HwmDNvfUd9zxnRvY"
-];
 
-let currentKeyIndex = 0;
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-async function scanWithGemini(baseBase64) {
+// NO pongas ninguna llave aquí arriba. Déjalo vacío.
+
+async function scanWithGemini(base64Image) {
+  // 1. Obtenemos la llave que pegaste en la caja de texto
+  const userKey = document.getElementById('apiKeyInput').value.trim();
+
+  if (!userKey) {
+    alert("¡Error! Primero pega tu API Key en el cuadro superior de la web.");
+    return;
+  }
+
   try {
-    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+    const genAI = new GoogleGenerativeAI(userKey);
     
-    // Este es el modelo que salía en tu captura (image_9f5444.png)
-    // Es el más rápido y el que tiene más cuota para no saturarse.
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-3.1-flash-lite" 
-    });
+    // Usamos el 1.5 Flash que es el más rápido
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const imageData = baseBase64.split(",")[1];
-    const namesList = units.map(u => u.nombre).join(", ");
-    
-    const prompt = `Identifica unidades de Sorcerer TD: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+    const imageData = base64Image.split(",")[1];
+    const prompt = "Identifica las unidades en esta imagen..."; // Tu prompt actual
 
-    const imagePart = {
-      inlineData: { data: imageData, mimeType: "image/png" }
-    };
+    const result = await model.generateContent([
+      prompt,
+      { inlineData: { data: imageData, mimeType: "image/png" } }
+    ]);
 
-    // Usamos una versión de la llamada más compatible con los modelos 3.x
-    const result = await model.generateContent([prompt, imagePart]);
     const response = await result.response;
-    let text = response.text();
-
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(text);
+    return JSON.parse(response.text().replace(/```json|```/g, "").trim());
 
   } catch (error) {
-    console.error("Error técnico:", error);
-    if (error.message.includes("429")) {
-        throw new Error("Saturación de Google. Espera 10 segundos.");
+    if (error.message.includes("403")) {
+      alert("API Key inválida o bloqueada. Crea una nueva en AI Studio.");
     }
-    throw new Error("Fallo de conexión: " + error.message);
+    throw error;
   }
 }
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
