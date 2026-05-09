@@ -1034,54 +1034,59 @@ async function scanWithGemini(base64Image) {
     });
 
     const imageData = base64Image.split(",")[1];
-    const namesList = units.map((u) => u.nombre).join(", ");
+    const namesList = units.map((u) => u.nombre).join(" | ");
     const historyBlock = buildCorrectionHistoryBlock();
     
-    // PROMPT ULTRA MEJORADO - Máxima precisión
-    const prompt = `${historyBlock}TAREA: Analizar imagen de Sorcerer TD y detectar unidades + votos vinculantes.
+    // PROMPT EXTREMADAMENTE CONSERVADOR Y PASO A PASO
+    const prompt = `${historyBlock}TAREA CRÍTICA: Detectar unidades y votos vinculantes en Sorcerer TD.
 
-LISTA VÁLIDA DE UNIDADES (usa SOLO estas, no inventes):
+LISTA EXACTA DE UNIDADES VÁLIDAS (SOLO ESTAS):
 ${namesList}
 
-INSTRUCCIONES CRÍTICAS:
-1. IDENTIFICACIÓN DE UNIDADES:
-   - Observa SOLO los personajes principales (siluetas grandes).
-   - Ignora completamente: fondos, efectos de batalla, proyectiles, partículas, sombras.
-   - Si hay duda sobre una unidad, NO la reportes.
-   - Compara cada personaje detectado con la lista exacta. Si no coincide, no lo incluyas.
+========== PASO 1: LISTAR PERSONAJES VISIBLES ==========
+Primero, lista SOLO los personajes que ves con TOTAL CERTEZA (ignora TODO lo demás):
+- Ignora: fondos, efectos, sombras, partículas, enemigos pequeños, NPCs.
+- SOLO siluetas principales grandes y claramente reconocibles.
+- Si tienes MENOS del 90% de seguridad sobre un personaje, NO lo listes.
 
-2. DETECCIÓN DE VOTOS VINCULANTES:
-   - UBICACIÓN: Busca en la ESQUINA INFERIOR DERECHA del personaje (no del fondo).
-   - ASPECTO: Un pequeño icono/logo distintivo (puede ser un símbolo, runa, emblema).
-   - CÓMO IDENTIFICAR: Cada voto tiene un icono visual DIFERENTE y ÚNICO:
-     * 1 (Nada) = Sin logo (el personaje está limpio)
-     * 2 (Fuerza) = Icono con símbolo de poder/músculo
-     * 3 (Velocidad) = Icono con líneas de velocidad/rayo
-     * 4 (Alcance) = Icono con expansión/círculos
-     * 5 (Summoner) = Icono con espiritales/seres
-     * 6 (Fortune) = Icono con monedas/estrella
-     * 7 (Poder) = Icono con fuego/energía
-     * 8 (Rápido) = Icono con velocidad/flash
-     * 9 (Caster 1) = Icono con magia/hechizo
-     * 10 (Eficiencia) = Icono con engranaje/optimización
-     * 11 (Restricción celestial) = Icono con restricción/cadenas celestes
-     * 12 (Honored one) = Icono con corona/honor
-     * 13 (Caster 2) = Icono con magia avanzada/cristal
+========== PASO 2: EMPAREJAR CON LISTA ==========
+Para CADA personaje que listaste:
+- Compara con la lista de nombres exactos.
+- Si NO coincide con 100%, NO lo reportes.
+- SOLO reporta personajes que EXACTAMENTE coincidan.
 
-3. REGLAS DE CONSERVADURISMO:
-   - Si NO ves claramente un logo diferenciado, devuelve 0.
-   - Si tienes 50% duda, devuelve 0.
-   - Es mejor perder un voto que reportar uno incorrecto.
-   - Cantidad: reporta el número EXACTO de personajes visibles.
+========== PASO 3: DETECTAR VOTOS (SOLO PARA PERSONAJES CONFIRMADOS) ==========
+Para cada personaje confirmado de la lista:
+- Busca en la ESQUINA INFERIOR DERECHA del personaje un PEQUEÑO ICONO/LOGO.
+- El icono debe estar DENTRO o MUY CERCA del personaje, NO en el fondo.
+- SOLO 13 votos posibles tienen iconos específicos, cada uno DIFERENTE:
+  1=Sin icono visible (personaje limpio)
+  2=Icono rojo/fuerte/poder
+  3=Icono azul/velocidad/rayo
+  4=Icono verde/expansión
+  5=Icono púrpura/espíritu
+  6=Icono amarillo/moneda/fortuna
+  7=Icono naranja/fuego/poder
+  8=Icono blanco/rápido/flash
+  9=Icono mágico/cristal azul
+  10=Icono gris/engranaje/eficiencia
+  11=Icono oscuro/restricción/celestial
+  12=Icono dorado/corona/honor
+  13=Icono mágico avanzado/cristal rosa
 
-4. FORMATO DE SALIDA (CRÍTICO):
-   - SOLO JSON válido.
-   - NADA de explicaciones, prefacio o comentarios.
-   - Campo "vote" OBLIGATORIO en cada item (0 si no hay logo).
-   - Usa "name" EXACTO de la lista.
+- Si ves AMBIGÜEDAD en el icono, devuelve 0.
+- Si NO ves claramente un icono diferenciado, devuelve 0.
+- MEJOR REPORTAR 0 QUE REPORTAR INCORRECTAMENTE.
 
-RESPUESTA:
-{"found": [{"name": "Nombre exacto", "qty": 1, "vote": 0}]}`;
+========== REGLA SUPREMA ==========
+- Cantidad: Reporta EXACTAMENTE cuántos de cada personaje ves (si ves 2 del mismo, qty=2).
+- Si hay DUDAS sobre nombre O voto, OMITE ese resultado.
+- CONSERVADURISMO EXTREMO: Es un 1000% mejor perder datos que reportar falsas identificaciones.
+
+========== RESPUESTA (SOLO JSON, NADA MÁS) ==========
+{"found": [{"name": "Nombre exacto de lista", "qty": 1, "vote": 0}]}
+
+RESPUESTA:`;
 
     const result = await model.generateContent([
       prompt,
