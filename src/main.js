@@ -87,9 +87,41 @@ let scannerTesterNotice = "";
 let scannerTesterImageDataUrl = "";
 let scannerTesterAnalyzing = false;
 let scannerTesterMatches = [];
+const CORRECTION_HISTORY_KEY = "td_correction_history";
 const scannerTemplateCache = new Map();
 const routeScrollTop = Object.create(null);
 const tradePickerScrollTop = { left: 0, right: 0 };
+
+function loadCorrectionHistory() {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CORRECTION_HISTORY_KEY);
+    const data = raw ? JSON.parse(raw) : [];
+    return Array.isArray(data) ? data.filter((item) => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCorrection(incorrect, correct) {
+  if (!incorrect || !correct) return;
+  const entry = `Si ves [${incorrect}], en realidad es [${correct}]`;
+  const history = loadCorrectionHistory();
+  if (history.includes(entry)) return history;
+  history.push(entry);
+  try {
+    localStorage.setItem(CORRECTION_HISTORY_KEY, JSON.stringify(history));
+  } catch (err) {
+    console.warn("No se pudo guardar la corrección:", err);
+  }
+  return history;
+}
+
+function buildCorrectionHistoryBlock() {
+  const history = loadCorrectionHistory();
+  if (!history.length) return "";
+  return ["HISTORIAL DE LECCIONES DEL USUARIO:", ...history].join("\n") + "\n\n";
+}
 
 function syncTdMobileAttr() {
   document.documentElement.dataset.tdMobile =
@@ -944,9 +976,10 @@ async function scanWithGemini(base64Image) {
 
     const imageData = base64Image.split(",")[1];
     const namesList = units.map(u => u.nombre).join(", ");
+    const historyBlock = buildCorrectionHistoryBlock();
     
     // PROMPT MEJORADO
-    const prompt = `Actúa como un experto analista visual del juego Sorcerer TD. 
+    const prompt = `${historyBlock}Actúa como un experto analista visual del juego Sorcerer TD. 
     Tu tarea es identificar las unidades presentes en esta imagen basándote en esta lista: [${namesList}].
 
     INSTRUCCIONES DE ANÁLISIS:
@@ -1548,6 +1581,74 @@ function buildTesterView() {
     card.appendChild(totalEl);
   }
 
+  const correctionPanel = document.createElement("div");
+  correctionPanel.id = "correction-panel";
+  correctionPanel.className = "correction-panel";
+  correctionPanel.setAttribute("aria-hidden", scannerTesterMatches.length ? "false" : "true");
+  correctionPanel.innerHTML = `
+    <div class="correction-panel-head">
+      <p>Corrección de resultados</p>
+    </div>
+    <div class="correction-panel-form">
+      <label>
+        Si ves
+        <select data-correction-incorrect></select>
+      </label>
+      <label>
+        En realidad es
+        <select data-correction-correct></select>
+      </label>
+      <button type="button" class="scanner-btn scanner-btn--primary">Guardar corrección</button>
+      <p class="correction-panel-note"></p>
+    </div>
+  `;
+
+  const incorrectSelect = correctionPanel.querySelector("[data-correction-incorrect]");
+  const correctSelect = correctionPanel.querySelector("[data-correction-correct]");
+  const correctionNote = correctionPanel.querySelector(".correction-panel-note");
+  const saveCorrectionButton = correctionPanel.querySelector("button");
+
+  if (incorrectSelect && correctSelect) {
+    const autoItems = scannerTesterMatches.map((row) =>
+      unitDisplayName(row.unit) || String(row.unit?.nombre || row.unit?.nombre_en || "")
+    );
+    const uniqueItems = [...new Set(autoItems.filter(Boolean))];
+    uniqueItems.forEach((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      incorrectSelect.appendChild(option);
+    });
+
+    const sortedUnits = [...units].sort((a, b) => {
+      const aName = unitDisplayName(a).toLowerCase();
+      const bName = unitDisplayName(b).toLowerCase();
+      return aName.localeCompare(bName);
+    });
+    sortedUnits.forEach((unit) => {
+      const option = document.createElement("option");
+      option.value = unit.nombre;
+      option.textContent = unitDisplayName(unit);
+      correctSelect.appendChild(option);
+    });
+  }
+
+  if (saveCorrectionButton) {
+    saveCorrectionButton.onclick = () => {
+      const incorrect = incorrectSelect?.value;
+      const correct = correctSelect?.value;
+      if (!incorrect || !correct) {
+        if (correctionNote) correctionNote.textContent = "Selecciona una unidad errónea y otra correcta.";
+        return;
+      }
+      saveCorrection(incorrect, correct);
+      if (correctionNote) {
+        correctionNote.textContent = `Guardado: Si ves [${incorrect}], en realidad es [${correct}].`;
+      }
+    };
+  }
+
+  card.appendChild(correctionPanel);
   wrap.appendChild(card);
 
   return wrap;
