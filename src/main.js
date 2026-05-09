@@ -247,6 +247,33 @@ function voteValueForUnit(unit, voteKey) {
   return uv[voteKey] ?? baseVal;
 }
 
+function findUnitByName(unitName) {
+  if (!unitName) return null;
+  return units.find(
+    (u) => u.nombre === unitName || u.nombre_en === unitName
+  );
+}
+
+export function calculateRealValue(unitName, voteNumber) {
+  const unit = findUnitByName(unitName);
+  if (!unit) return 0;
+  const baseVal = Number(unit.valor) || 0;
+  if (!voteNumber || voteNumber <= 0) return baseVal;
+  const voteKey = `voto${voteNumber}`;
+  const candidateKeys = [];
+  if (unit.id !== undefined && unit.id !== null) candidateKeys.push(unit.id);
+  candidateKeys.push(unit.nombre);
+  let uv = {};
+  for (const key of candidateKeys) {
+    if (vote_values[key]) {
+      uv = vote_values[key];
+      break;
+    }
+  }
+  const voteVal = uv[voteKey];
+  return typeof voteVal === "number" && voteVal > 0 ? voteVal : baseVal;
+}
+
 function calcGrandTotal() {
   let total = 0;
   for (const u of units) {
@@ -979,20 +1006,19 @@ async function scanWithGemini(base64Image) {
     const historyBlock = buildCorrectionHistoryBlock();
     
     // PROMPT MEJORADO
-    const prompt = `${historyBlock}Actúa como un experto analista visual del juego Sorcerer TD. 
+    const prompt = `${historyBlock}Actúa como un experto analista visual del juego Sorcerer TD.
     Tu tarea es identificar las unidades presentes en esta imagen basándote en esta lista: [${namesList}].
 
     INSTRUCCIONES DE ANÁLISIS:
-    1. IGNORA EL FONDO: Céntrate exclusivamente en las siluetas y personajes. No cuentes elementos del escenario ni efectos de ataques.
-    2. DIFERENCIACIÓN CRÍTICA:
-       - GOJO vs GOJO EVO: Mira el pelo. Aunque son casi idénticos, sus peinados y el aura son distintos. No los confundas.
-       - GETO vs KENJAKU: Fíjate en la frente y los detalles de la cara. Son muy parecidos pero son unidades distintas.
-    3. DETALLES VISUALES: Mira la ropa, las armas y la postura de cada silueta.
-    4. SIN INVENTAR: Si una unidad no está en la lista [${namesList}], ignórala.
-    
+    1. Busca un pequeño logo en la esquina inferior derecha de cada unidad.
+    2. Si detectas ese logo, devuelve el número de voto correspondiente (1-13).
+    3. Si no hay logo visible, devuelve 0.
+    4. IGNORA el fondo y los efectos visuales.
+    5. Responde sólo JSON válido.
+
     RESPUESTA:
-    Responde ÚNICAMENTE con un objeto JSON puro.
-    Formato: {"found": [{"name": "Nombre exacto de la lista", "qty": 1}]}`;
+    Responde únicamente con un objeto JSON puro.
+    Formato: {"found": [{"name": "Nombre exacto de la lista", "qty": 1, "vote": 0}]}`;
 
     const result = await model.generateContent([
       prompt,
@@ -1005,7 +1031,7 @@ async function scanWithGemini(base64Image) {
     // Mostramos en consola qué ha pensado la IA por si falla algo
     console.log("Análisis de la IA:", text);
     
-    const data = JSON.parse(text);
+    const data = parseGeminiJson(text);
 
     if (!data.found || data.found.length === 0) {
       console.log("No se detectaron unidades en esta captura.");
@@ -1476,22 +1502,31 @@ function buildTesterView() {
         // 2. Procesamos lo que la IA encontró
         for (const item of parsed.found || []) {
           const qty = Number(item.qty) || 1;
-          
+          const voteNumber = Number(item.vote) || 0;
+
           // Buscamos en tu lista de unidades por nombre
-          const unit = units.find(u => 
-            u.nombre === item.name || u.nombre_en === item.name
+          const unit = units.find(
+            (u) => u.nombre === item.name || u.nombre_en === item.name
           );
 
+          const matchUnit = unit || {
+            nombre: item.name,
+            nombre_en: item.name,
+            valor: 0,
+            imagen: "",
+            rareza: "",
+          };
+
           matches.push({
-            unit: unit || { nombre: item.name, valor: 0, imagen: "", rareza: "" },
+            unit: matchUnit,
             count: qty,
-            bestSimilarity: unit ? 1 : 0
+            voteNumber,
+            bestSimilarity: unit ? 1 : 0,
           });
 
-          // Esto es para que se vean los nombres en las celdas
-          foundItems.push({ 
-            name: unit ? (lang === "es" ? unit.nombre : unit.nombre_en) : item.name, 
-            qty 
+          foundItems.push({
+            name: unit ? (lang === "es" ? unit.nombre : unit.nombre_en) : item.name,
+            qty,
           });
         }
         
@@ -1563,14 +1598,23 @@ function buildTesterView() {
     list.className = "scanner-results";
     let total = 0;
     for (const row of scannerTesterMatches) {
-      total += (Number(row.unit.valor) || 0) * row.count;
+      const rowValue = calculateRealValue(row.unit.nombre, row.voteNumber);
+      total += rowValue * row.count;
       const item = document.createElement("div");
       item.className = "scanner-result-item";
       const nm = unitDisplayName(row.unit);
+      const thumbSrc = row.unit.imagen ? assetUrl(row.unit.imagen) : "";
+      const voteImg = row.voteNumber > 0 ? assetUrl(`assets/votos/voto${row.voteNumber}.png`) : "";
       item.innerHTML = `
-        <span class="name">${escapeHtml(nm)} x${row.count}</span>
-        <span class="sim">${escapeHtml(t(lang, "scanner.confidence"))}: ${(row.bestSimilarity * 100).toFixed(1)}%</span>
-        <span class="val">${Number(row.unit.valor) || 0}</span>
+        <div class="scanner-result-thumb-wrap">
+          ${thumbSrc ? `<img class="scanner-result-thumb" src="${escapeHtml(thumbSrc)}" alt="${escapeHtml(nm)}" />` : ""}
+          ${voteImg ? `<img class="scanner-result-vote" src="${escapeHtml(voteImg)}" alt="Voto ${row.voteNumber}" />` : ""}
+        </div>
+        <div class="scanner-result-meta">
+          <span class="name">${escapeHtml(nm)} x${row.count}</span>
+          <span class="sim">${escapeHtml(t(lang, "scanner.confidence"))}: ${(row.bestSimilarity * 100).toFixed(1)}%</span>
+        </div>
+        <span class="val">${rowValue}</span>
       `;
       list.appendChild(item);
     }
@@ -1598,6 +1642,10 @@ function buildTesterView() {
         En realidad es
         <select data-correction-correct></select>
       </label>
+      <label>
+        Voto correcto
+        <select data-correction-vote></select>
+      </label>
       <button type="button" class="scanner-btn scanner-btn--primary">Guardar corrección</button>
       <p class="correction-panel-note"></p>
     </div>
@@ -1605,6 +1653,7 @@ function buildTesterView() {
 
   const incorrectSelect = correctionPanel.querySelector("[data-correction-incorrect]");
   const correctSelect = correctionPanel.querySelector("[data-correction-correct]");
+  const voteSelect = correctionPanel.querySelector("[data-correction-vote]");
   const correctionNote = correctionPanel.querySelector(".correction-panel-note");
   const saveCorrectionButton = correctionPanel.querySelector("button");
 
@@ -1631,19 +1680,41 @@ function buildTesterView() {
       option.textContent = unitDisplayName(unit);
       correctSelect.appendChild(option);
     });
+
+    if (voteSelect) {
+      const voteOption = document.createElement("option");
+      voteOption.value = "0";
+      voteOption.textContent = "Sin logo";
+      voteSelect.appendChild(voteOption);
+      for (let i = 1; i <= 13; i++) {
+        const option = document.createElement("option");
+        option.value = String(i);
+        option.textContent = String(i);
+        voteSelect.appendChild(option);
+      }
+    }
   }
 
   if (saveCorrectionButton) {
     saveCorrectionButton.onclick = () => {
       const incorrect = incorrectSelect?.value;
       const correct = correctSelect?.value;
+      const selectedVote = Number(voteSelect?.value || 0);
       if (!incorrect || !correct) {
         if (correctionNote) correctionNote.textContent = "Selecciona una unidad errónea y otra correcta.";
         return;
       }
       saveCorrection(incorrect, correct);
+      if (scannerTesterMatches.length && selectedVote !== undefined && selectedVote >= 0) {
+        for (const row of scannerTesterMatches) {
+          if (unitDisplayName(row.unit) === incorrect) {
+            row.voteNumber = selectedVote;
+          }
+        }
+        renderApp();
+      }
       if (correctionNote) {
-        correctionNote.textContent = `Guardado: Si ves [${incorrect}], en realidad es [${correct}].`;
+        correctionNote.textContent = `Guardado: Si ves [${incorrect}], en realidad es [${correct}]${selectedVote ? ` con voto ${selectedVote}` : ""}.`;
       }
     };
   }
