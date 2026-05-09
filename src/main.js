@@ -930,16 +930,15 @@ async function scanWithGemini(baseBase64) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
     
-    // Este es el único que NO te da 404. 
-    // Si te da 429, es solo cuestión de ESPERAR TIEMPO.
-    
-    // Este modelo es el que tiene la cuota gratuita abierta y estable
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // 1. Usamos el modelo que SI aparece en tu captura de pantalla
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.0-flash" 
+    });
 
     const imageData = baseBase64.split(",")[1];
     const namesList = units.map(u => u.nombre).join(", ");
     
-    const prompt = `Identifica las unidades de Sorcerer TD. Usa solo: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+    const prompt = `Identifica las unidades de Sorcerer TD en esta imagen. Solo usa estos nombres: [${namesList}]. Responde EXCLUSIVAMENTE con un JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
     const imagePart = {
       inlineData: {
@@ -948,6 +947,7 @@ async function scanWithGemini(baseBase64) {
       }
     };
 
+    // 2. Llamada al modelo 2.0
     const result = await model.generateContent([prompt, imagePart]);
     const response = await result.response;
     let text = response.text();
@@ -956,6 +956,10 @@ async function scanWithGemini(baseBase64) {
     return JSON.parse(text);
 
   } catch (error) {
+    // Si el error es 429, avisamos al usuario de forma amigable
+    if (error.message.includes("429")) {
+      throw new Error("La IA está saturada. Espera 30 segundos y vuelve a intentar.");
+    }
     console.error("Error en el scanner:", error);
     throw new Error("Error al conectar con la IA: " + error.message);
   }
