@@ -927,7 +927,7 @@ function updateScannerCdCells(found) {
   });
 }
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+
 
 // NO pongas ninguna llave aquí arriba. Déjalo vacío.
 
