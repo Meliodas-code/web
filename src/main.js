@@ -926,43 +926,57 @@ function updateScannerCdCells(found) {
     }
   });
 }
+// 1. Añade aquí todas las llaves que crees en AI Studio
+const GEMINI_KEYS = [
+  "AIzaSyAmzPFMvsZvDLGb5Hp383lOaZipYLT4Ud0",
+  "AIzaSyDrIkCHwTmipC03qu-OqQym2DKnW0z4Fwc",
+  "AIzaSyB2-O2uzqo7YTpvZM5HwmDNvfUd9zxnRvY"
+];
+
+let currentKeyIndex = 0;
+
 async function scanWithGemini(baseBase64) {
-  try {
-    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+  // Intentamos con cada llave si la anterior está saturada (429)
+  for (let i = 0; i < GEMINI_KEYS.length; i++) {
+    const activeKey = GEMINI_KEYS[currentKeyIndex];
     
-    // 1. Usamos el modelo que SI aparece en tu captura de pantalla
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash" 
-    });
+    try {
+      const genAI = new GoogleGenerativeAI(activeKey);
+      
+      // Usamos la versión '002' del 1.5 Flash. 
+      // Es la versión de largo plazo que Google NO va a borrar pronto.
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" });
 
-    const imageData = baseBase64.split(",")[1];
-    const namesList = units.map(u => u.nombre).join(", ");
-    
-    const prompt = `Identifica las unidades de Sorcerer TD en esta imagen. Solo usa estos nombres: [${namesList}]. Responde EXCLUSIVAMENTE con un JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+      const imageData = baseBase64.split(",")[1];
+      const namesList = units.map(u => u.nombre).join(", ");
+      
+      const prompt = `Identifica unidades de Sorcerer TD. Solo usa: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
-    const imagePart = {
-      inlineData: {
-        data: imageData,
-        mimeType: "image/png"
+      const imagePart = {
+        inlineData: { data: imageData, mimeType: "image/png" }
+      };
+
+      const result = await model.generateContent([prompt, imagePart]);
+      const response = await result.response;
+      let text = response.text();
+
+      text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+      return JSON.parse(text);
+
+    } catch (error) {
+      // Si la llave actual está saturada (429), saltamos a la siguiente
+      if (error.message.includes("429")) {
+        console.warn(`Llave ${currentKeyIndex} agotada. Rotando...`);
+        currentKeyIndex = (currentKeyIndex + 1) % GEMINI_KEYS.length;
+        continue; // Reintenta el bucle con la siguiente llave
       }
-    };
-
-    // 2. Llamada al modelo 2.0
-    const result = await model.generateContent([prompt, imagePart]);
-    const response = await result.response;
-    let text = response.text();
-
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(text);
-
-  } catch (error) {
-    // Si el error es 429, avisamos al usuario de forma amigable
-    if (error.message.includes("429")) {
-      throw new Error("La IA está saturada. Espera 30 segundos y vuelve a intentar.");
+      
+      // Si el error es 404 (porque Google se pone tonto con el 1.5), 
+      // cámbialo a "gemini-2.0-flash" en el código de arriba y reintenta.
+      throw error; 
     }
-    console.error("Error en el scanner:", error);
-    throw new Error("Error al conectar con la IA: " + error.message);
   }
+  throw new Error("Todas las API Keys están saturadas. Espera un minuto.");
 }
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
   const canvas = document.createElement("canvas");
