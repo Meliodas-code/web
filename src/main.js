@@ -56,7 +56,7 @@ const SCANNER_TEST_USER = "UN66467019";
 const SCANNER_TEST_PASS = "1234";
 const SCANNER_VECTOR_SIZE = 40;
 const SCANNER_MATCH_THRESHOLD = 0.76;
-const GEMINI_KEY = "AIzaSyAmzPFMvsZvDLGb5Hp383lOaZipYLT4Ud0";
+const GEMINI_KEY = "AIzaSyDrIkCHwTmipC03qu-OqQym2DKnW0z4Fwc";
 const CREDITS_PROFILES = [
   {
     roleKey: "credits.role_creator",
