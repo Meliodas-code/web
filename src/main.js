@@ -524,7 +524,7 @@ function buildTradeInventory(sideName) {
   } else {
     for (const { unit: u, voteKey, qty } of entries) {
       const slot = document.createElement("div");
-      slot.className = "trade-inv-slot";
+      slot.className = `trade-inv-slot ${cardRarityClass(u.rareza)}`.trim();
       const vi = Number(String(voteKey).replace(/\D/g, "")) || 0;
       slot.title =
         vi > 0
@@ -714,7 +714,7 @@ function buildTradeHalf(sideName, filtered) {
 
   for (const u of filtered) {
     const row = document.createElement("div");
-    row.className = "trade-row";
+    row.className = `trade-row ${cardRarityClass(u.rareza)}`.trim();
 
     const face = document.createElement("img");
     face.className = "face";
@@ -978,23 +978,20 @@ async function scanWithGemini(base64Image) {
     const namesList = units.map(u => u.nombre).join(", ");
     const historyBlock = buildCorrectionHistoryBlock();
     // Busca la parte donde se hace el .map de las unidades en el Trade
+        // Línea 448 aprox.
     const html = filtered.map(u => {
-    // Usamos normalizeRarity para asegurarnos de que el nombre sea limpio (mythic, legendary, etc.)
-    const rarityClass = normalizeRarity(u.rareza); 
-  
-    return `
-        <div class="unit-card" 
-            data-rarity="${rarityClass}" 
-             onclick="handleTradeAdd('${side}', '${u.nombre}')">
-          <img src="${u.imagen}" alt="${u.nombre}" loading="lazy">
-          <div class="unit-info">
-            <p class="unit-name">${u.nombre}</p>
-            <p class="unit-value">${formatValue(u.valor)}</p>
+      const rClass = normalizeRarity(u.rareza); // Añade esta línea
+        return `
+          <div class="unit-card" data-rarity="${rClass}" onclick="handleTradeAdd('${pickerSide}', '${u.nombre}')">
+            <img src="${u.imagen}" alt="${u.nombre}" loading="lazy">
+            <div class="unit-info">
+              <p class="unit-name">${u.nombre}</p>
+              <p class="unit-value">${formatValue(u.valor)}</p>
+            </div>
           </div>
-        </div>
-      </div>
-    `;
-  }).join("");
+        `;
+      }).join("");
+    
     
     // PROMPT MEJORADO
     const prompt = `Analiza esta imagen de Sorcerer TD como si fueras un inspector de seguridad. No puedes saltarte ninguna unidad.
