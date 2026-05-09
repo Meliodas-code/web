@@ -944,7 +944,7 @@ async function scanWithGemini(baseBase64) {
       const genAI = new GoogleGenerativeAI(activeKey);
       
       
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-3.0-flash" });
 
       const imageData = baseBase64.split(",")[1];
       const namesList = units.map(u => u.nombre).join(", ");
