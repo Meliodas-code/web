@@ -943,9 +943,8 @@ async function scanWithGemini(baseBase64) {
     try {
       const genAI = new GoogleGenerativeAI(activeKey);
       
-      // Usamos la versión '002' del 1.5 Flash. 
-      // Es la versión de largo plazo que Google NO va a borrar pronto.
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" });
+      
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
       const imageData = baseBase64.split(",")[1];
       const namesList = units.map(u => u.nombre).join(", ");
