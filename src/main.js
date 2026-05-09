@@ -926,20 +926,18 @@ function updateScannerCdCells(found) {
     }
   });
 }
-
-
-
 async function scanWithGemini(baseBase64) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
     
-    // Usamos gemini-1.5-flash-latest que es el que mejor cuota tiene
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    // Este es el único que NO te da 404. 
+    // Si te da 429, es solo cuestión de ESPERAR TIEMPO.
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const imageData = baseBase64.split(",")[1];
     const namesList = units.map(u => u.nombre).join(", ");
     
-    const prompt = `Identifica las unidades de Sorcerer TD en esta imagen. Solo usa estos nombres: [${namesList}]. Responde EXCLUSIVAMENTE con un JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
+    const prompt = `Identifica las unidades de Sorcerer TD. Usa solo: [${namesList}]. Responde JSON: {"found": [{"name": "Nombre", "qty": 1}]}`;
 
     const imagePart = {
       inlineData: {
