@@ -947,14 +947,66 @@ function scannerResetNoticeError() {
 }
 
 function parseGeminiJson(output) {
+  const raw = String(output || "").trim();
   try {
     // Buscamos el JSON dentro del texto por si la IA añade algo fuera
-    const match = output.match(/\{[\s\S]*\}/);
+    const match = raw.match(/\{[\s\S]*\}/);
     if (!match) throw new Error("No se encontró JSON");
     return JSON.parse(match[0]);
   } catch (err) {
-    console.error("Error parseando JSON de Gemini:", output);
-    return { found: [] };
+    // Fallback tolerante: si el JSON viene cortado, intentamos rescatar
+    // los objetos completos dentro de "found": [ {..}, {..}, ... ].
+    try {
+      const start = raw.indexOf('"found"');
+      if (start < 0) throw err;
+      const arrStart = raw.indexOf("[", start);
+      if (arrStart < 0) throw err;
+      const items = [];
+      let i = arrStart + 1;
+      while (i < raw.length) {
+        while (i < raw.length && raw[i] !== "{") {
+          if (raw[i] === "]") return { found: items };
+          i++;
+        }
+        if (i >= raw.length) break;
+        const objStart = i;
+        let depth = 0;
+        let inStr = false;
+        let esc = false;
+        while (i < raw.length) {
+          const ch = raw[i];
+          if (inStr) {
+            if (esc) esc = false;
+            else if (ch === "\\") esc = true;
+            else if (ch === '"') inStr = false;
+          } else {
+            if (ch === '"') inStr = true;
+            else if (ch === "{") depth++;
+            else if (ch === "}") {
+              depth--;
+              if (depth === 0) {
+                const chunk = raw.slice(objStart, i + 1);
+                try {
+                  const parsed = JSON.parse(chunk);
+                  if (parsed && typeof parsed === "object") items.push(parsed);
+                } catch (_) {
+                  // objeto corrupto → lo ignoramos
+                }
+                i++;
+                break;
+              }
+            }
+          }
+          i++;
+        }
+        // si se cortó antes de cerrar "}", salimos y devolvemos lo rescatado
+        if (depth !== 0) break;
+      }
+      return { found: items };
+    } catch (_) {
+      console.error("Error parseando JSON de Gemini:", raw);
+      return { found: [] };
+    }
   }
 }
 
@@ -1034,48 +1086,21 @@ async function scanWithGemini(base64Image) {
     const historyBlock = buildCorrectionHistoryBlock();
 
     const prompt = `${historyBlock}
-# INSTRUCCIONES DE ESCANEO PROFESIONAL - SORCERER TD #
+Eres un OCR para "Sorcerer Tower Defense".
 
-Eres un sistema de reconocimiento de imágenes especializado en Sorcerer Tower Defense. Tu objetivo es identificar unidades y sus "Votes" (encantamientos) basándote en la Wiki oficial.
+TAREA:
+- Detecta unidades en la imagen.
+- Para cada unidad detectada, detecta su voto por el mini-logo circular (normalmente en una esquina).
 
-## 1. IDENTIFICACIÓN DE UNIDADES
-- Usa esta lista de nombres oficiales: [${namesList}].
-- PRECISIÓN: Si una unidad tiene aura o efectos visuales adicionales, busca la versión "Evo" en la lista.
-- Si ves a Gojo con vendas es la versión base; si tiene los ojos descubiertos y pelo hacia arriba, es la versión final.
+RESTRICCIONES (OBLIGATORIAS):
+- "name" debe ser EXACTAMENTE uno de estos nombres: [${namesList}]
+- "vote" debe ser EXACTAMENTE uno de: "voto1","voto2",...,"voto13"
+- "qty" debe ser un entero >= 1
+- Si no estás seguro de una unidad o voto: NO la incluyas.
+- Devuelve SOLO JSON VÁLIDO. Si no encuentras nada: {"found":[]}
 
-## 2. IDENTIFICACIÓN DE VOTOS (POR DISEÑO Y COLOR)
-Cada unidad tiene un icono circular en la esquina. Identifícalo por su apariencia visual única según la Wiki:
-- Voto 1 (Base): Sin icono. -> "voto1"
-- Voto 2 (Pulo Rojo - Fuerza): Icono rojo con símbolo de puño. -> "voto2"
-- Voto 3 (Azul con 3 rayas - velocidad): Icono azul con símbolo de ala. -> "voto3"
-- Voto 4 (morado puntero - Alcanze): Icono morado con símbolo de mirilla. -> "voto4"
-- Voto 5 (Verde circular - Summoner): Icono circular con símbolo de ojo/energía. -> "voto5"
-- Voto 6 (Dorado monedas - Fortune): Icono amarillo brillante con símbolo de monedas apliadas. -> "voto6"
-- Voto 7 (Martillo rojo - fuerza): Icono rojo con símbolo de martillo. -> "voto7"
-- Voto 8 (Tornado azul - Rapido): Icono azul claro con forma de tornado. -> "voto8"
-- Voto 9 (Palo con punta de energia azul - Caster): Icono de vara/varita con punta de estrella azul. -> "voto9"
-- Voto 10 (engranaje gris con simbolo del dolar en el centro - Eficiencia): Icono gris con forma de engranaje con simbolo del dolar. -> "voto10"
-- Voto 11 (Espada/Vara de color gris en medio blanco arriba y oscuro abajo - Restriccion Celestial): Icono con forma de espada o vara, mitad superior blanca y mitad inferior gris oscuro. -> "voto11"
-- Voto 12 /Bola roja con forma de remolino hacia el centro - Honored One): Icono rojo con forma de bola o esfera con un remolino que gira hacia el centro. -> "voto12"
-- Voto 13 (Vara azul con estrella en la punta con un 2 al lado - Caster2): Icono con forma de vara o varita, con una estrella en la punta y un número 2 al lado. -> "voto13"
-
-## 3. REGLAS DE EXTRACCIÓN
-- Analiza la imagen fila por fila, de izquierda a derecha.
-- Si una unidad es borrosa pero reconocible por su paleta de colores, inclúyela.
-- El campo "vote" debe ser exactamente "voto1"..."voto13" (ej: "voto7", no "7").
-
-## 4. FORMATO DE SALIDA (JSON PURO)
-{
-  "found": [
-    {
-      "name": "Nombre de la Unidad",
-      "vote": "votoX",
-      "qty": 1
-    }
-  ]
-}
-
-REGLA DE ORO: No inventes unidades. Si no está en [${namesList}], ignórala.`;
+FORMATO:
+{"found":[{"name":"...","vote":"voto7","qty":1}]}`.trim();
 
 
 
