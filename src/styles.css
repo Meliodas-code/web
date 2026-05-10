@@ -1116,31 +1116,67 @@ main.content {
 
 .trade-row.epic {
   border-color: rgba(192, 132, 252, 0.7);
+  background: linear-gradient(
+      168deg,
+      rgba(192, 132, 252, 0.14) 0%,
+      transparent 58%
+    ),
+    #140a1c;
   box-shadow: 0 0 12px rgba(192, 132, 252, 0.15);
 }
 
 .trade-row.legendary {
   border-color: rgba(250, 204, 21, 0.7);
+  background: linear-gradient(
+      168deg,
+      rgba(250, 204, 21, 0.12) 0%,
+      transparent 58%
+    ),
+    #1a1508;
   box-shadow: 0 0 12px rgba(250, 204, 21, 0.12);
 }
 
 .trade-row.mythic {
   border-color: rgba(248, 113, 113, 0.7);
+  background: linear-gradient(
+      168deg,
+      rgba(248, 113, 113, 0.14) 0%,
+      transparent 58%
+    ),
+    #1a0808;
   box-shadow: 0 0 12px rgba(248, 113, 113, 0.15);
 }
 
 .trade-row.sg {
   border-color: rgba(96, 165, 250, 0.7);
+  background: linear-gradient(
+      168deg,
+      rgba(96, 165, 250, 0.14) 0%,
+      transparent 58%
+    ),
+    #060e18;
   box-shadow: 0 0 12px rgba(96, 165, 250, 0.15);
 }
 
 .trade-row.asc {
   border-color: rgba(216, 180, 254, 0.7);
+  background: linear-gradient(
+      168deg,
+      rgba(192, 132, 252, 0.12) 0%,
+      transparent 58%
+    ),
+    #120a20;
   box-shadow: 0 0 12px rgba(216, 180, 254, 0.12);
 }
 
 .trade-row.aniv {
   border-color: rgba(244, 114, 182, 0.7);
+  background: linear-gradient(
+      168deg,
+      rgba(244, 114, 182, 0.14) 0%,
+      transparent 58%
+    ),
+    #1a0814;
   box-shadow: 0 0 12px rgba(244, 114, 182, 0.15);
 }
 
