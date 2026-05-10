@@ -1092,76 +1092,75 @@ async function scanWithGemini(base64Image, candidates, maxCount = 6) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
-    // En la configuración del modelo
+    // Usamos gemini-1.5-flash-latest que es el más preciso para visión actual
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       generationConfig: {
-      maxOutputTokens: 1024,
-      temperature: 0,
-      responseMimeType: "application/json" // Esto obliga a la IA a cerrar siempre el JSON
-    }
-  });
+        maxOutputTokens: 2048, // Aumentado para que el JSON no se corte
+        temperature: 0,        // 0 para evitar que la IA invente nombres
+        responseMimeType: "application/json" 
+      }
+    });
+
     const imageData = base64Image.split(",")[1];
     const pool = Array.isArray(candidates) && candidates.length ? candidates : units;
-    // Importante: el output debe ser CANÓNICO (nombre ES, `u.nombre`)
-    // para que en UI se muestre en el idioma actual con `unitDisplayName`.
+    
+    // Lista limpia de nombres para que la IA no se pierda
     const namesList = pool
       .map((u) => String(u?.nombre || "").trim())
       .filter(Boolean)
       .join(", ");
-    const aliasesBlock = pool
-      .map((u) => {
-        const es = String(u?.nombre || "").trim();
-        const en = String(u?.nombre_en || "").trim();
-        if (!es) return "";
-        return en ? `- ${es} (EN alias: ${en})` : `- ${es}`;
-      })
-      .filter(Boolean)
-      .join("\n");
+
     const historyBlock = buildCorrectionHistoryBlock();
 
-    const prompt = `Analiza esta imagen de Sorcerer TD. 
-Lista las unidades que veas usando SOLO estos nombres: [${namesList}].
+    // Prompt ultra-optimizado: Menos texto = Más precisión
+    const prompt = `INVENTARIO SORCERER TD.
+LISTA DE UNIDADES VÁLIDAS: [${namesList}]
 
-Para cada unidad, identifica el círculo de color en la esquina (Voto):
-- Rojo con Puño -> voto2
-- Azul con Alas -> voto3
-- Morado con Mirilla -> voto4
-- Verde con Ojo -> voto5
-- Amarillo con Monedas -> voto6
-- Rojo con Martillo -> voto7
-- Cian con Tornado -> voto8
-- Vara con Estrella -> voto9
-- Engranaje Gris -> voto10
-- Espada Blanco/Negro -> voto11
-- Rojo con Remolino -> voto12
-- Vara con Estrella y un '2' -> voto13
-- Sin icono -> voto
+TAREA:
+1. Identifica cada unidad de la imagen comparándola con la LISTA DE UNIDADES VÁLIDAS.
+2. Para cada unidad, identifica el icono circular (Voto) en su esquina:
+   - Rojo con Puño -> voto2
+   - Azul con Alas/Rayas -> voto3
+   - Morado con Mirilla -> voto4
+   - Verde con Ojo -> voto5
+   - Amarillo con Monedas -> voto6
+   - Rojo con Martillo -> voto7
+   - Cian con Tornado -> voto8
+   - Vara con Estrella -> voto9
+   - Gris con Engranaje -> voto10
+   - Espada Blanco/Negro -> voto11
+   - Rojo con Remolino -> voto12
+   - Vara con Estrella y un '2' -> voto13
+   - Sin icono -> voto
 
-Responde SOLO en este formato JSON:
-{"found": [{"name": "Nombre", "vote": "votoX", "qty": 1}]}`;
+3. Si hay varias unidades iguales, cuéntalas individualmente o suma su 'qty'.
 
+${historyBlock}
+
+RESPUESTA (SOLO JSON):
+{"found": [{"name": "Nombre exacto de la lista", "vote": "votoX", "qty": 1}]}`;
 
     const result = await model.generateContent([
-      prompt,
+      { text: prompt },
       { inlineData: { data: imageData, mimeType: "image/png" } }
     ]);
 
     const response = await result.response;
-    let text = response.text().replace(/```json|```/g, "").trim();
+    let text = response.text().trim();
 
-    console.log("Análisis de la IA:", text);
+    console.log("Respuesta bruta de la IA:", text);
 
     const data = parseGeminiJson(text);
 
     if (!data.found || data.found.length === 0) {
-      console.log("No se detectaron unidades en esta captura.");
+      console.warn("La IA no devolvió unidades.");
     }
 
     return data;
 
   } catch (error) {
-    console.error("Error detallado:", error);
+    console.error("Error detallado en scanWithGemini:", error);
     throw new Error("Fallo en el escaneo: " + error.message);
   }
 }
