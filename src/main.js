@@ -1087,84 +1087,58 @@ function pickUnitFromLookup(lookup, rawName) {
   if (lookup[keyL]) return lookup[keyL];
   return null;
 }
-
 async function scanWithGemini(base64Image, candidates, maxCount = 6) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-
-    // Usamos gemini-1.5-flash-latest que es el más preciso para visión actual
     const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash-latest",
       generationConfig: {
-        maxOutputTokens: 2048, // Aumentado para que el JSON no se corte
-        temperature: 0,        // 0 para evitar que la IA invente nombres
+        maxOutputTokens: 2048,
+        temperature: 0, 
         responseMimeType: "application/json" 
       }
     });
 
     const imageData = base64Image.split(",")[1];
     const pool = Array.isArray(candidates) && candidates.length ? candidates : units;
-    
-    // Lista limpia de nombres para que la IA no se pierda
-    const namesList = pool
-      .map((u) => String(u?.nombre || "").trim())
-      .filter(Boolean)
-      .join(", ");
+    const namesList = pool.map(u => u.nombre).filter(Boolean).join(", ");
 
-    const historyBlock = buildCorrectionHistoryBlock();
+    const prompt = `ERES UN EXPERTO EN DISEÑO DE PERSONAJES DE SORCERER TD.
+TU OBJETIVO: Identificar CADA unidad del inventario basándote en rasgos físicos.
 
-    // Prompt ultra-optimizado: Menos texto = Más precisión
-    const prompt = `INVENTARIO SORCERER TD.
-LISTA DE UNIDADES VÁLIDAS: [${namesList}]
+INSTRUCCIONES DE ANÁLISIS VISUAL:
+1. Analiza cada carta de la imagen de izquierda a derecha.
+2. Para cada personaje, fíjate PRIORITARIAMENTE en:
+   - PELO: Color, forma (erizado, largo, liso).
+   - ROPA: Color de los uniformes, capas, vendas o armaduras.
+   - POSTURA Y ARMAS: Si sostiene una katana, si está en pose de ataque, si tiene un aura de energía.
+   - ROSTRO: Cicatrices (Kenjaku), vendas en los ojos (Gojo base), ojos descubiertos (Gojo Evo).
+3. Compara estos rasgos con la LISTA OFICIAL: [${namesList}].
+4. CUENTA EXACTAMENTE cuántas unidades hay. Si ves 3 cartas iguales, debes reportar 3 o qty:3.
 
-TAREA:
-1. Identifica cada unidad de la imagen comparándola con la LISTA DE UNIDADES VÁLIDAS.
-2. Para cada unidad, identifica el icono circular (Voto) en su esquina:
-   - Rojo con Puño -> voto2
-   - Azul con Alas/Rayas -> voto3
-   - Morado con Mirilla -> voto4
-   - Verde con Ojo -> voto5
-   - Amarillo con Monedas -> voto6
-   - Rojo con Martillo -> voto7
-   - Cian con Tornado -> voto8
-   - Vara con Estrella -> voto9
-   - Gris con Engranaje -> voto10
-   - Espada Blanco/Negro -> voto11
-   - Rojo con Remolino -> voto12
-   - Vara con Estrella y un '2' -> voto13
-   - Sin icono -> voto
+REGLA DE VOTOS (SOLO DESPUÉS DE IDENTIFICAR AL PERSONAJE):
+- Una vez identificado el personaje, mira el icono circular pequeño:
+- Rojo (Puño/Martillo)=voto2/7, Azul (Alas/Tornado)=voto3/8, Morado=voto4, Verde=voto5, Amarillo=voto6, Gris=voto10, Blanco-Negro=voto11, Rojo Remolino=voto12, Sin icono=voto.
 
-3. Si hay varias unidades iguales, cuéntalas individualmente o suma su 'qty'.
-
-${historyBlock}
-
-RESPUESTA (SOLO JSON):
-{"found": [{"name": "Nombre exacto de la lista", "vote": "votoX", "qty": 1}]}`;
+RESPUESTA (JSON PURO):
+{"found": [{"name": "Nombre exacto", "vote": "votoX", "qty": 1}]}`;
 
     const result = await model.generateContent([
-      { text: prompt },
-      { inlineData: { data: imageData, mimeType: "image/png" } }
+      { inlineData: { data: imageData, mimeType: "image/png" } },
+      { text: prompt }
     ]);
 
     const response = await result.response;
-    let text = response.text().trim();
+    const text = response.text().trim();
+    console.log("Análisis detallado de la IA:", text);
 
-    console.log("Respuesta bruta de la IA:", text);
-
-    const data = parseGeminiJson(text);
-
-    if (!data.found || data.found.length === 0) {
-      console.warn("La IA no devolvió unidades.");
-    }
-
-    return data;
+    return parseGeminiJson(text);
 
   } catch (error) {
-    console.error("Error detallado en scanWithGemini:", error);
+    console.error("Error en el scanner:", error);
     throw new Error("Fallo en el escaneo: " + error.message);
   }
 }
-
 function scannerImageFromSrc(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
