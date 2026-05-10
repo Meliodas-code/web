@@ -1254,6 +1254,80 @@ function scannerBuildCandidates(img) {
   const side = Math.min(w, h);
   const out = [];
   out.push({ x: (w - side) / 2, y: (h - side) / 2, w: side, h: side });
+
+  // Heurística: capturas de inventario suelen tener varias "cartas" azules en fila.
+  // Detectamos bandas verticales con mucho azul para proponer crops por carta.
+  try {
+    const canvas = document.createElement("canvas");
+    const dw = Math.min(420, w);
+    const dh = Math.max(1, Math.round((h / w) * dw));
+    canvas.width = dw;
+    canvas.height = dh;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (ctx) {
+      ctx.drawImage(img, 0, 0, dw, dh);
+      const data = ctx.getImageData(0, 0, dw, dh).data;
+      const colScore = new Float32Array(dw);
+      for (let x = 0; x < dw; x++) {
+        let blueHits = 0;
+        // muestreamos filas (cada 2 px) para ser rápidos
+        for (let y = 0; y < dh; y += 2) {
+          const p = (y * dw + x) * 4;
+          const r = data[p];
+          const g = data[p + 1];
+          const b = data[p + 2];
+          // "azul carta": b alto, r/g moderados-bajos
+          if (b > 120 && b - Math.max(r, g) > 55) blueHits++;
+        }
+        colScore[x] = blueHits / Math.max(1, Math.ceil(dh / 2));
+      }
+      // threshold adaptativo
+      let mean = 0;
+      for (let x = 0; x < dw; x++) mean += colScore[x];
+      mean /= dw || 1;
+      const thr = Math.min(0.55, Math.max(0.18, mean * 1.35));
+
+      /** @type {Array<{x0:number,x1:number}>} */
+      const runs = [];
+      let x = 0;
+      while (x < dw) {
+        while (x < dw && colScore[x] < thr) x++;
+        if (x >= dw) break;
+        const x0 = x;
+        while (x < dw && colScore[x] >= thr) x++;
+        const x1 = x - 1;
+        if (x1 - x0 + 1 >= Math.floor(dw * 0.12)) runs.push({ x0, x1 });
+      }
+      // merge runs cercanas (separación pequeña)
+      const merged = [];
+      for (const r0 of runs) {
+        const last = merged[merged.length - 1];
+        if (!last) merged.push({ ...r0 });
+        else if (r0.x0 - last.x1 <= Math.floor(dw * 0.03)) last.x1 = r0.x1;
+        else merged.push({ ...r0 });
+      }
+      for (const r0 of merged) {
+        const cx = (r0.x0 + r0.x1) / 2;
+        const bw = r0.x1 - r0.x0 + 1;
+        // asumimos carta casi cuadrada y centrada verticalmente
+        const c = Math.min(bw, dh);
+        const sx = Math.max(0, Math.min(dw - c, Math.round(cx - c / 2)));
+        const sy = Math.max(0, Math.min(dh - c, Math.round((dh - c) / 2)));
+        // map a coordenadas originales
+        const scaleX = w / dw;
+        const scaleY = h / dh;
+        out.push({
+          x: sx * scaleX,
+          y: sy * scaleY,
+          w: c * scaleX,
+          h: c * scaleY,
+        });
+      }
+    }
+  } catch (_) {
+    // ignore
+  }
+
   const grids = [2, 3, 4, 5, 6];
   for (const g of grids) {
     const cw = Math.floor(w / g);
@@ -1269,6 +1343,52 @@ function scannerBuildCandidates(img) {
     }
   }
   return out;
+}
+
+const scannerVoteTplCache = new Map();
+
+async function scannerVoteTemplates() {
+  if (scannerVoteTplCache.size) return scannerVoteTplCache;
+  for (let i = 1; i <= 13; i++) {
+    try {
+      const img = await scannerImageFromSrc(assetUrl(`assets/votos/voto${i}.png`));
+      const v = scannerVectorFromImage(img, 32, 1);
+      if (v) scannerVoteTplCache.set(i, v);
+    } catch (_) {
+      // si falta algún asset, lo ignoramos
+    }
+  }
+  return scannerVoteTplCache;
+}
+
+async function scannerDetectVoteFromCrop(img, cropRect) {
+  // Recortamos esquinas donde suele estar el logo (abajo izq/der).
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  const x = Math.max(0, cropRect.x);
+  const y = Math.max(0, cropRect.y);
+  const cw = Math.max(1, cropRect.w);
+  const ch = Math.max(1, cropRect.h);
+  const corner = Math.floor(Math.min(cw, ch) * 0.38);
+  const corners = [
+    { x: x, y: y + ch - corner, w: corner, h: corner }, // bottom-left
+    { x: x + cw - corner, y: y + ch - corner, w: corner, h: corner }, // bottom-right
+  ];
+  const tpl = await scannerVoteTemplates();
+  let best = { vote: 1, sim: 0 };
+  for (const c of corners) {
+    const vec = scannerVectorFromCrop(img, c, 1);
+    if (!vec) continue;
+    for (const [vote, tvec] of tpl.entries()) {
+      const simEdge = scannerSimilarity(vec.edge, tvec.edge);
+      const simOcc = scannerSimilarity(vec.occ, tvec.occ);
+      const simHist = scannerHistogramSimilarity(vec.hist, tvec.hist);
+      const sim = simEdge * 0.55 + simOcc * 0.25 + simHist * 0.2;
+      if (sim > best.sim) best = { vote, sim };
+    }
+  }
+  // threshold: si no hay coincidencia clara, devolvemos voto1 (sin voto vinculante).
+  return best.sim >= 0.62 ? best.vote : 1;
 }
 
 function scannerVectorFromCrop(img, crop, centerRatio = 1) {
@@ -1449,9 +1569,21 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
     if (b.count !== a.count) return b.count - a.count;
     return b.bestSimilarity - a.bestSimilarity;
   });
-  if (finalRows.length) return finalRows;
+  if (finalRows.length) {
+    // Adjuntamos voto detectado por icono (si procede)
+    for (const row of finalRows) {
+      // buscamos el mejor rect para esa unidad entre selected
+      const bestRect = selected
+        .filter((s) => s.unit?.nombre === row.unit?.nombre)
+        .sort((a, b) => b.similarity - a.similarity)[0]?.rect;
+      if (bestRect) row.vote = await scannerDetectVoteFromCrop(img, bestRect);
+      else row.vote = 1;
+    }
+    return finalRows;
+  }
   if (bestGlobal && bestGlobal.similarity >= 0.58) {
-    return [{ unit: bestGlobal.unit, count: 1, bestSimilarity: bestGlobal.similarity }];
+    const vote = await scannerDetectVoteFromCrop(img, bestGlobal.rect);
+    return [{ unit: bestGlobal.unit, count: 1, bestSimilarity: bestGlobal.similarity, vote }];
   }
   return [];
 }
@@ -1626,41 +1758,57 @@ function buildTesterView() {
     scannerTesterAnalyzing = true;
     renderApp();
     try {
-      // 1. Llamamos a la IA (la función que pusimos antes)
+      // 1) Intentamos detección local (más precisa si las plantillas cargan)
       let candidateUnits = null;
+      let localRows = null;
       try {
         const local = await scannerAnalyzeImageDataUrl(scannerTesterImageDataUrl);
-        candidateUnits = Array.isArray(local) ? local.map((r) => r.unit).filter(Boolean) : null;
+        localRows = Array.isArray(local) ? local : null;
+        candidateUnits = localRows ? localRows.map((r) => r.unit).filter(Boolean) : null;
       } catch (_) {
         candidateUnits = null;
+        localRows = null;
       }
-
-      const parsed = await scanWithGemini(scannerTesterImageDataUrl, candidateUnits);
 
       const matches = [];
       const foundItems = [];
 
-        // 2. Procesamos lo que la IA encontró
-        const lookup = buildScannerUnitLookup();
-        for (const item of parsed.found || []) {
-          const qty = Math.max(1, Math.min(999, Number(item.qty) || 1));
-          const voteNum = parseVoteFromGemini(item.vote);
+        if (localRows && localRows.length) {
+          for (const row of localRows) {
+            const qty = Math.max(1, Math.min(999, Number(row.count) || 1));
+            const voteNum = Math.max(1, Math.min(13, Number(row.vote) || 1));
+            matches.push({
+              unit: row.unit,
+              count: qty,
+              vote: voteNum,
+              bestSimilarity: Number(row.bestSimilarity) || 0,
+            });
+            foundItems.push({ name: unitDisplayName(row.unit), qty });
+          }
+        } else {
+          // 2) Fallback: IA, acotada por candidatas si existían
+          const parsed = await scanWithGemini(scannerTesterImageDataUrl, candidateUnits);
 
-          const rawName = item?.name ?? item?.unit ?? item?.nombre ?? "";
-          const unit = pickUnitFromLookup(lookup, rawName);
+          const lookup = buildScannerUnitLookup();
+          for (const item of parsed.found || []) {
+            const qty = Math.max(1, Math.min(999, Number(item.qty) || 1));
+            const voteNum = parseVoteFromGemini(item.vote);
 
-          matches.push({
-            unit: unit || { nombre: item.name, valor: 0, imagen: "", rareza: "" },
-            count: qty,
-            vote: voteNum,
-            bestSimilarity: unit ? 1 : 0
-          });
+            const rawName = item?.name ?? item?.unit ?? item?.nombre ?? "";
+            const unit = pickUnitFromLookup(lookup, rawName);
 
-          // Esto es para que se vean los nombres en las celdas
-          foundItems.push({
-            name: unit ? unitDisplayName(unit) : String(rawName || item.name || ""),
-            qty
-          });
+            matches.push({
+              unit: unit || { nombre: item.name, valor: 0, imagen: "", rareza: "" },
+              count: qty,
+              vote: voteNum,
+              bestSimilarity: unit ? 1 : 0
+            });
+
+            foundItems.push({
+              name: unit ? unitDisplayName(unit) : String(rawName || item.name || ""),
+              qty
+            });
+          }
         }
         
 
