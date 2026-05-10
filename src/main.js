@@ -530,6 +530,19 @@ function buildTradeInventory(sideName) {
         vi > 0
           ? `${unitDisplayName(u)} · V${vi}`
           : unitDisplayName(u);
+      slot.role = "button";
+      slot.tabIndex = 0;
+      slot.setAttribute("aria-label", `${unitDisplayName(u)} · click para quitar 1`);
+      slot.addEventListener("click", () => {
+        adjustTradeVotes(sideName, u.nombre, voteKey, -1);
+        renderApp();
+      });
+      slot.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        ev.preventDefault();
+        adjustTradeVotes(sideName, u.nombre, voteKey, -1);
+        renderApp();
+      });
 
       const img = document.createElement("img");
       img.className = "trade-inv-slot-img";
@@ -961,6 +974,41 @@ function updateScannerCdCells(found) {
     }
   });
 }
+
+function normScanToken(s) {
+  return String(s || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("es")
+    .normalize("NFC");
+}
+
+function parseVoteFromGemini(v) {
+  if (v === null || v === undefined) return 1;
+  if (typeof v === "number" && Number.isFinite(v)) {
+    return Math.max(1, Math.min(13, Math.round(v)));
+  }
+  const s = String(v).trim().toLowerCase();
+  if (!s) return 1;
+  if (s === "voto" || s === "vote") return 1;
+  const m = s.match(/^(?:voto|vote)[_\s-]?(\d{1,2})$/i);
+  if (m) return Math.max(1, Math.min(13, Number(m[1]) || 1));
+  const digits = s.replace(/\D/g, "");
+  if (digits) return Math.max(1, Math.min(13, Number(digits) || 1));
+  return 1;
+}
+
+function buildScannerUnitLookup() {
+  /** @type {Record<string, any>} */
+  const byNorm = Object.create(null);
+  for (const u of units) {
+    const es = normScanToken(u?.nombre);
+    const en = normScanToken(u?.nombre_en);
+    if (es) byNorm[es] = u;
+    if (en && !(en in byNorm)) byNorm[en] = u;
+  }
+  return byNorm;
+}
 async function scanWithGemini(base64Image) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
@@ -975,7 +1023,14 @@ async function scanWithGemini(base64Image) {
     }
   });
     const imageData = base64Image.split(",")[1];
-    const namesList = units.map(u => u.nombre).join(", ");
+    const namesList = units
+      .map((u) => {
+        const es = String(u.nombre || "").trim();
+        const en = String(u.nombre_en || "").trim();
+        return en ? `${es} / ${en}` : es;
+      })
+      .filter(Boolean)
+      .join(", ");
     const historyBlock = buildCorrectionHistoryBlock();
 
     const prompt = `${historyBlock}
@@ -990,7 +1045,7 @@ Eres un sistema de reconocimiento de imágenes especializado en Sorcerer Tower D
 
 ## 2. IDENTIFICACIÓN DE VOTOS (POR DISEÑO Y COLOR)
 Cada unidad tiene un icono circular en la esquina. Identifícalo por su apariencia visual única según la Wiki:
-- Voto 1 (Base): Sin icono . -> "voto"
+- Voto 1 (Base): Sin icono. -> "voto1"
 - Voto 2 (Pulo Rojo - Fuerza): Icono rojo con símbolo de puño. -> "voto2"
 - Voto 3 (Azul con 3 rayas - velocidad): Icono azul con símbolo de ala. -> "voto3"
 - Voto 4 (morado puntero - Alcanze): Icono morado con símbolo de mirilla. -> "voto4"
@@ -1007,7 +1062,7 @@ Cada unidad tiene un icono circular en la esquina. Identifícalo por su aparienc
 ## 3. REGLAS DE EXTRACCIÓN
 - Analiza la imagen fila por fila, de izquierda a derecha.
 - Si una unidad es borrosa pero reconocible por su paleta de colores, inclúyela.
-- El campo "vote" debe ser el ID exacto (ej: "voto7", no "7").
+- El campo "vote" debe ser exactamente "voto1"..."voto13" (ej: "voto7", no "7").
 
 ## 4. FORMATO DE SALIDA (JSON PURO)
 {
@@ -1034,7 +1089,7 @@ REGLA DE ORO: No inventes unidades. Si no está en [${namesList}], ignórala.`;
 
     console.log("Análisis de la IA:", text);
 
-    const data = JSON.parse(text);
+    const data = parseGeminiJson(text);
 
     if (!data.found || data.found.length === 0) {
       console.log("No se detectaron unidades en esta captura.");
@@ -1503,14 +1558,13 @@ function buildTesterView() {
       const foundItems = [];
 
         // 2. Procesamos lo que la IA encontró
+        const lookup = buildScannerUnitLookup();
         for (const item of parsed.found || []) {
-          const qty = Number(item.qty) || 1;
-          const voteNum = Math.max(1, Math.min(13, Number(item.vote) || 1));
+          const qty = Math.max(1, Math.min(999, Number(item.qty) || 1));
+          const voteNum = parseVoteFromGemini(item.vote);
 
-          // Buscamos en tu lista de unidades por nombre
-          const unit = units.find(u =>
-            u.nombre === item.name || u.nombre_en === item.name
-          );
+          const rawName = item?.name ?? item?.unit ?? item?.nombre ?? "";
+          const unit = lookup[normScanToken(rawName)] || null;
 
           matches.push({
             unit: unit || { nombre: item.name, valor: 0, imagen: "", rareza: "" },
@@ -1521,7 +1575,7 @@ function buildTesterView() {
 
           // Esto es para que se vean los nombres en las celdas
           foundItems.push({
-            name: unit ? (lang === "es" ? unit.nombre : unit.nombre_en) : item.name,
+            name: unit ? unitDisplayName(unit) : String(rawName || item.name || ""),
             qty
           });
         }
