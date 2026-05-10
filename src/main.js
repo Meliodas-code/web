@@ -1165,6 +1165,18 @@ FORMATO:
     throw new Error("Fallo en el escaneo: " + error.message);
   }
 }
+
+function scannerImageFromSrc(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.loading = "eager";
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+    img.src = String(src || "");
+  });
+}
+
 function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
   const canvas = document.createElement("canvas");
   canvas.width = size;
