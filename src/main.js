@@ -1035,6 +1035,17 @@ function normScanToken(s) {
     .normalize("NFC");
 }
 
+function normScanTokenLoose(s) {
+  return String(s || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es")
+    .replace(/[^a-z0-9 ]+/g, "")
+    .trim();
+}
+
 function parseVoteFromGemini(v) {
   if (v === null || v === undefined) return 1;
   if (typeof v === "number" && Number.isFinite(v)) {
@@ -1058,10 +1069,24 @@ function buildScannerUnitLookup() {
     const en = normScanToken(u?.nombre_en);
     if (es) byNorm[es] = u;
     if (en && !(en in byNorm)) byNorm[en] = u;
+
+    const esL = normScanTokenLoose(u?.nombre);
+    const enL = normScanTokenLoose(u?.nombre_en);
+    if (esL && !(esL in byNorm)) byNorm[esL] = u;
+    if (enL && !(enL in byNorm)) byNorm[enL] = u;
   }
   return byNorm;
 }
-async function scanWithGemini(base64Image) {
+
+function pickUnitFromLookup(lookup, rawName) {
+  const key = normScanToken(rawName);
+  if (lookup[key]) return lookup[key];
+  const keyL = normScanTokenLoose(rawName);
+  if (lookup[keyL]) return lookup[keyL];
+  return null;
+}
+
+async function scanWithGemini(base64Image, candidates) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
@@ -1069,20 +1094,28 @@ async function scanWithGemini(base64Image) {
     const model = genAI.getGenerativeModel({ 
       model: "gemini-flash-latest",
       generationConfig: {
-      maxOutputTokens: 2048, // Aumenta esto si estaba bajo
-      temperature: 0.1,      // Bájalo para que sea más preciso y no divague
+      maxOutputTokens: 1024,
+      temperature: 0,
       responseMimeType: "application/json" // Esto obliga a la IA a cerrar siempre el JSON
     }
   });
     const imageData = base64Image.split(",")[1];
-    const namesList = units
-      .map((u) => {
-        const es = String(u.nombre || "").trim();
-        const en = String(u.nombre_en || "").trim();
-        return en ? `${es} / ${en}` : es;
-      })
+    const pool = Array.isArray(candidates) && candidates.length ? candidates : units;
+    // Importante: el output debe ser CANÓNICO (nombre ES, `u.nombre`)
+    // para que en UI se muestre en el idioma actual con `unitDisplayName`.
+    const namesList = pool
+      .map((u) => String(u?.nombre || "").trim())
       .filter(Boolean)
       .join(", ");
+    const aliasesBlock = pool
+      .map((u) => {
+        const es = String(u?.nombre || "").trim();
+        const en = String(u?.nombre_en || "").trim();
+        if (!es) return "";
+        return en ? `- ${es} (EN alias: ${en})` : `- ${es}`;
+      })
+      .filter(Boolean)
+      .join("\n");
     const historyBlock = buildCorrectionHistoryBlock();
 
     const prompt = `${historyBlock}
@@ -1093,11 +1126,14 @@ TAREA:
 - Para cada unidad detectada, detecta su voto por el mini-logo circular (normalmente en una esquina).
 
 RESTRICCIONES (OBLIGATORIAS):
-- "name" debe ser EXACTAMENTE uno de estos nombres: [${namesList}]
+- "name" debe ser EXACTAMENTE uno de estos nombres (canónicos, en español): [${namesList}]
 - "vote" debe ser EXACTAMENTE uno de: "voto1","voto2",...,"voto13"
 - "qty" debe ser un entero >= 1
-- Si no estás seguro de una unidad o voto: NO la incluyas.
+- Si no estás seguro de una unidad o voto: NO la incluyas (no inventes).
 - Devuelve SOLO JSON VÁLIDO. Si no encuentras nada: {"found":[]}
+
+ALIAS (para ayudarte a reconocerlos, PERO NO LOS DEVUELVAS COMO name):
+${aliasesBlock}
 
 FORMATO:
 {"found":[{"name":"...","vote":"voto7","qty":1}]}`.trim();
@@ -1577,7 +1613,15 @@ function buildTesterView() {
     renderApp();
     try {
       // 1. Llamamos a la IA (la función que pusimos antes)
-      const parsed = await scanWithGemini(scannerTesterImageDataUrl);
+      let candidateUnits = null;
+      try {
+        const local = await scannerAnalyzeImageDataUrl(scannerTesterImageDataUrl);
+        candidateUnits = Array.isArray(local) ? local.map((r) => r.unit).filter(Boolean) : null;
+      } catch (_) {
+        candidateUnits = null;
+      }
+
+      const parsed = await scanWithGemini(scannerTesterImageDataUrl, candidateUnits);
 
       const matches = [];
       const foundItems = [];
@@ -1589,7 +1633,7 @@ function buildTesterView() {
           const voteNum = parseVoteFromGemini(item.vote);
 
           const rawName = item?.name ?? item?.unit ?? item?.nombre ?? "";
-          const unit = lookup[normScanToken(rawName)] || null;
+          const unit = pickUnitFromLookup(lookup, rawName);
 
           matches.push({
             unit: unit || { nombre: item.name, valor: 0, imagen: "", rareza: "" },
