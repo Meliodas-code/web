@@ -1094,7 +1094,7 @@ async function scanWithGemini(base64Image, candidates, maxCount = 6) {
 
     // En la configuración del modelo
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       generationConfig: {
       maxOutputTokens: 1024,
       temperature: 0,
@@ -1120,34 +1120,26 @@ async function scanWithGemini(base64Image, candidates, maxCount = 6) {
       .join("\n");
     const historyBlock = buildCorrectionHistoryBlock();
 
-    const prompt = `${historyBlock}
-Eres un sistema de escaneo de alta precisión para Sorcerer Tower Defense.
-TU MISIÓN: Identificar cada unidad y su VOTO (encantamiento) en la imagen.
+    const prompt = `Analiza esta imagen de Sorcerer TD. 
+Lista las unidades que veas usando SOLO estos nombres: [${namesList}].
 
-1. IDENTIFICACIÓN DE UNIDADES:
-- Usa solo esta lista: [${namesList}]
-- Si ves más de una unidad igual, identifícalas todas (qty: 1 por cada una, o suma el total).
-- No ignores unidades repetidas.
+Para cada unidad, identifica el círculo de color en la esquina (Voto):
+- Rojo con Puño -> voto2
+- Azul con Alas -> voto3
+- Morado con Mirilla -> voto4
+- Verde con Ojo -> voto5
+- Amarillo con Monedas -> voto6
+- Rojo con Martillo -> voto7
+- Cian con Tornado -> voto8
+- Vara con Estrella -> voto9
+- Engranaje Gris -> voto10
+- Espada Blanco/Negro -> voto11
+- Rojo con Remolino -> voto12
+- Vara con Estrella y un '2' -> voto13
+- Sin icono -> voto
 
-2. IDENTIFICACIÓN DE VOTOS (POR DISEÑO):
-Mira el icono circular pequeño en la esquina de cada carta:
-- Icono Rojo (Puño) -> "voto2"
-- Icono Azul (Alas/Rayas) -> "voto3"
-- Icono Morado (Mirilla) -> "voto4"
-- Icono Verde (Ojo) -> "voto5"
-- Icono Dorado (Monedas) -> "voto6"
-- Icono Rojo (Martillo) -> "voto7"
-- Icono Cian (Tornado) -> "voto8"
-- Vara con Estrella -> "voto9"
-- Gris (Engranaje) -> "voto10"
-- Blanco/Negro (Espada) -> "voto11"
-- Rojo (Remolino) -> "voto12"
-- Vara con Estrella y un "2" -> "voto13"
-- SIN ICONO -> "voto"
-
-3. FORMATO DE SALIDA (JSON ESTRICTO):
-Solo responde con el objeto JSON. No escribas nada más.
-{"found": [{"name": "Nombre Exacto", "vote": "votoX", "qty": 1}]}`;
+Responde SOLO en este formato JSON:
+{"found": [{"name": "Nombre", "vote": "votoX", "qty": 1}]}`;
 
 
     const result = await model.generateContent([
