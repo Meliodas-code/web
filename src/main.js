@@ -1090,6 +1090,8 @@ function pickUnitFromLookup(lookup, rawName) {
 async function scanWithGemini(base64Image, candidates, maxCount = 6) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+    
+    // Usamos el modelo 1.5 que es el que tiene "ojos" para los detalles
     const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash-latest",
       generationConfig: {
@@ -1103,39 +1105,46 @@ async function scanWithGemini(base64Image, candidates, maxCount = 6) {
     const pool = Array.isArray(candidates) && candidates.length ? candidates : units;
     const namesList = pool.map(u => u.nombre).filter(Boolean).join(", ");
 
-    const prompt = `ERES UN EXPERTO EN DISEÑO DE PERSONAJES DE SORCERER TD.
-TU OBJETIVO: Identificar CADA unidad del inventario basándote en rasgos físicos.
+    const prompt = `ACTÚA COMO UN EXPERTO EN RECONOCIMIENTO VISUAL.
+TU TAREA: Escanear las cartas de personajes en la imagen adjunta.
 
-INSTRUCCIONES DE ANÁLISIS VISUAL:
-1. Analiza cada carta de la imagen de izquierda a derecha.
-2. Para cada personaje, fíjate PRIORITARIAMENTE en:
-   - PELO: Color, forma (erizado, largo, liso).
-   - ROPA: Color de los uniformes, capas, vendas o armaduras.
-   - POSTURA Y ARMAS: Si sostiene una katana, si está en pose de ataque, si tiene un aura de energía.
-   - ROSTRO: Cicatrices (Kenjaku), vendas en los ojos (Gojo base), ojos descubiertos (Gojo Evo).
-3. Compara estos rasgos con la LISTA OFICIAL: [${namesList}].
-4. CUENTA EXACTAMENTE cuántas unidades hay. Si ves 3 cartas iguales, debes reportar 3 o qty:3.
+REGLAS CRÍTICAS:
+1. SOLO identifica unidades que estén EN LA IMAGEN.
+2. Compara el físico (pelo, ropa, postura) con esta lista: [${namesList}]
+3. Si hay varias unidades iguales, cuéntalas todas (qty).
+4. VOTOS (Icono circular): Identifícalo por color (Rojo, Azul, Verde, etc.) y asígnale el ID "votoX" correspondiente.
 
-REGLA DE VOTOS (SOLO DESPUÉS DE IDENTIFICAR AL PERSONAJE):
-- Una vez identificado el personaje, mira el icono circular pequeño:
-- Rojo (Puño/Martillo)=voto2/7, Azul (Alas/Tornado)=voto3/8, Morado=voto4, Verde=voto5, Amarillo=voto6, Gris=voto10, Blanco-Negro=voto11, Rojo Remolino=voto12, Sin icono=voto.
-
-RESPUESTA (JSON PURO):
+RESPUESTA (SOLO JSON):
 {"found": [{"name": "Nombre exacto", "vote": "votoX", "qty": 1}]}`;
 
-    const result = await model.generateContent([
-      { inlineData: { data: imageData, mimeType: "image/png" } },
-      { text: prompt }
-    ]);
+    // CAMBIO VITAL: Estructura de "parts" explícita
+    const result = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [
+          {
+            inlineData: {
+              mimeType: "image/png",
+              data: imageData
+            }
+          },
+          {
+            text: prompt
+          }
+        ]
+      }]
+    });
 
     const response = await result.response;
     const text = response.text().trim();
-    console.log("Análisis detallado de la IA:", text);
+    
+    // Esto te ayudará a ver en la consola si la IA está diciendo tonterías antes de fallar
+    console.log("Respuesta cruda de Gemini:", text);
 
     return parseGeminiJson(text);
 
   } catch (error) {
-    console.error("Error en el scanner:", error);
+    console.error("Error real en el envío a Gemini:", error);
     throw new Error("Fallo en el escaneo: " + error.message);
   }
 }
@@ -1222,100 +1231,18 @@ function scannerIou(a, b) {
 }
 
 function scannerBuildCandidates(img) {
+  // Eliminamos todos los recortes raros que fallan.
+  // Enviamos solo la imagen completa para que la IA no se confunda.
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
-  const side = Math.min(w, h);
-  const out = [];
-  out.push({ x: (w - side) / 2, y: (h - side) / 2, w: side, h: side });
-
-  // Heurística: capturas de inventario suelen tener varias "cartas" azules en fila.
-  // Detectamos bandas verticales con mucho azul para proponer crops por carta.
-  try {
-    const canvas = document.createElement("canvas");
-    const dw = Math.min(420, w);
-    const dh = Math.max(1, Math.round((h / w) * dw));
-    canvas.width = dw;
-    canvas.height = dh;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (ctx) {
-      ctx.drawImage(img, 0, 0, dw, dh);
-      const data = ctx.getImageData(0, 0, dw, dh).data;
-      const colScore = new Float32Array(dw);
-      for (let x = 0; x < dw; x++) {
-        let blueHits = 0;
-        // muestreamos filas (cada 2 px) para ser rápidos
-        for (let y = 0; y < dh; y += 2) {
-          const p = (y * dw + x) * 4;
-          const r = data[p];
-          const g = data[p + 1];
-          const b = data[p + 2];
-          // "azul carta": b alto, r/g moderados-bajos
-          if (b > 120 && b - Math.max(r, g) > 55) blueHits++;
-        }
-        colScore[x] = blueHits / Math.max(1, Math.ceil(dh / 2));
-      }
-      // threshold adaptativo
-      let mean = 0;
-      for (let x = 0; x < dw; x++) mean += colScore[x];
-      mean /= dw || 1;
-      const thr = Math.min(0.55, Math.max(0.18, mean * 1.35));
-
-      /** @type {Array<{x0:number,x1:number}>} */
-      const runs = [];
-      let x = 0;
-      while (x < dw) {
-        while (x < dw && colScore[x] < thr) x++;
-        if (x >= dw) break;
-        const x0 = x;
-        while (x < dw && colScore[x] >= thr) x++;
-        const x1 = x - 1;
-        if (x1 - x0 + 1 >= Math.floor(dw * 0.12)) runs.push({ x0, x1 });
-      }
-      // merge runs cercanas (separación pequeña)
-      const merged = [];
-      for (const r0 of runs) {
-        const last = merged[merged.length - 1];
-        if (!last) merged.push({ ...r0 });
-        else if (r0.x0 - last.x1 <= Math.floor(dw * 0.03)) last.x1 = r0.x1;
-        else merged.push({ ...r0 });
-      }
-      for (const r0 of merged) {
-        const cx = (r0.x0 + r0.x1) / 2;
-        const bw = r0.x1 - r0.x0 + 1;
-        // asumimos carta casi cuadrada y centrada verticalmente
-        const c = Math.min(bw, dh);
-        const sx = Math.max(0, Math.min(dw - c, Math.round(cx - c / 2)));
-        const sy = Math.max(0, Math.min(dh - c, Math.round((dh - c) / 2)));
-        // map a coordenadas originales
-        const scaleX = w / dw;
-        const scaleY = h / dh;
-        out.push({
-          x: sx * scaleX,
-          y: sy * scaleY,
-          w: c * scaleX,
-          h: c * scaleY,
-        });
-      }
-    }
-  } catch (_) {
-    // ignore
-  }
-
-  const grids = [2, 3, 4, 5, 6];
-  for (const g of grids) {
-    const cw = Math.floor(w / g);
-    const ch = Math.floor(h / g);
-    const c = Math.min(cw, ch);
-    if (c < 20) continue;
-    for (let gy = 0; gy < g; gy++) {
-      for (let gx = 0; gx < g; gx++) {
-        const x = gx * cw + Math.max(0, (cw - c) / 2);
-        const y = gy * ch + Math.max(0, (ch - c) / 2);
-        out.push({ x, y, w: c, h: c });
-      }
-    }
-  }
-  return out;
+  
+  // Retornamos un único "crop" que es la imagen entera.
+  return [{
+    x: 0,
+    y: 0,
+    w: w,
+    h: h
+  }];
 }
 
 async function scannerEstimateCardCountFromDataUrl(dataUrl) {
