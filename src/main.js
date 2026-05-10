@@ -1088,7 +1088,7 @@ function pickUnitFromLookup(lookup, rawName) {
   return null;
 }
 
-async function scanWithGemini(base64Image, candidates) {
+async function scanWithGemini(base64Image, candidates, maxCount = 6) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
@@ -1131,6 +1131,7 @@ RESTRICCIONES (OBLIGATORIAS):
 - "name" debe ser EXACTAMENTE uno de estos nombres (canónicos, en español): [${namesList}]
 - "vote" debe ser EXACTAMENTE uno de: "voto1","voto2",...,"voto13"
 - "qty" debe ser un entero >= 1
+- Devuelve COMO MÁXIMO ${Math.max(1, Math.min(12, Number(maxCount) || 1))} elementos en "found" (si dudas, devuelve menos).
 - Si no estás seguro de una unidad o voto: NO la incluyas (no inventes).
 - Devuelve SOLO JSON VÁLIDO. Si no encuentras nada: {"found":[]}
 
@@ -1343,6 +1344,52 @@ function scannerBuildCandidates(img) {
     }
   }
   return out;
+}
+
+async function scannerEstimateCardCountFromDataUrl(dataUrl) {
+  try {
+    const img = await scannerImageFromSrc(dataUrl);
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    const canvas = document.createElement("canvas");
+    const dw = Math.min(420, w);
+    const dh = Math.max(1, Math.round((h / w) * dw));
+    canvas.width = dw;
+    canvas.height = dh;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return 1;
+    ctx.drawImage(img, 0, 0, dw, dh);
+    const data = ctx.getImageData(0, 0, dw, dh).data;
+    const colScore = new Float32Array(dw);
+    for (let x = 0; x < dw; x++) {
+      let blueHits = 0;
+      for (let y = 0; y < dh; y += 2) {
+        const p = (y * dw + x) * 4;
+        const r = data[p];
+        const g = data[p + 1];
+        const b = data[p + 2];
+        if (b > 120 && b - Math.max(r, g) > 55) blueHits++;
+      }
+      colScore[x] = blueHits / Math.max(1, Math.ceil(dh / 2));
+    }
+    let mean = 0;
+    for (let x = 0; x < dw; x++) mean += colScore[x];
+    mean /= dw || 1;
+    const thr = Math.min(0.55, Math.max(0.18, mean * 1.35));
+    let runs = 0;
+    let x = 0;
+    while (x < dw) {
+      while (x < dw && colScore[x] < thr) x++;
+      if (x >= dw) break;
+      const x0 = x;
+      while (x < dw && colScore[x] >= thr) x++;
+      const x1 = x - 1;
+      if (x1 - x0 + 1 >= Math.floor(dw * 0.12)) runs++;
+    }
+    return Math.max(1, Math.min(12, runs || 1));
+  } catch {
+    return 1;
+  }
 }
 
 const scannerVoteTplCache = new Map();
@@ -1761,6 +1808,7 @@ function buildTesterView() {
       // 1) Intentamos detección local (más precisa si las plantillas cargan)
       let candidateUnits = null;
       let localRows = null;
+      const maxCount = await scannerEstimateCardCountFromDataUrl(scannerTesterImageDataUrl);
       try {
         const local = await scannerAnalyzeImageDataUrl(scannerTesterImageDataUrl);
         localRows = Array.isArray(local) ? local : null;
@@ -1787,10 +1835,19 @@ function buildTesterView() {
           }
         } else {
           // 2) Fallback: IA, acotada por candidatas si existían
-          const parsed = await scanWithGemini(scannerTesterImageDataUrl, candidateUnits);
+          const parsed = await scanWithGemini(scannerTesterImageDataUrl, candidateUnits, maxCount);
 
           const lookup = buildScannerUnitLookup();
+          const cleaned = [];
+          const seen = new Set();
           for (const item of parsed.found || []) {
+            if (cleaned.length >= maxCount) break;
+            const nm = String(item?.name ?? "").trim();
+            if (!nm || seen.has(nm)) continue;
+            seen.add(nm);
+            cleaned.push(item);
+          }
+          for (const item of cleaned) {
             const qty = Math.max(1, Math.min(999, Number(item.qty) || 1));
             const voteNum = parseVoteFromGemini(item.vote);
 
