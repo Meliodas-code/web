@@ -1121,26 +1121,33 @@ async function scanWithGemini(base64Image, candidates, maxCount = 6) {
     const historyBlock = buildCorrectionHistoryBlock();
 
     const prompt = `${historyBlock}
-Eres un OCR para "Sorcerer Tower Defense".
+Eres un sistema de escaneo de alta precisión para Sorcerer Tower Defense.
+TU MISIÓN: Identificar cada unidad y su VOTO (encantamiento) en la imagen.
 
-TAREA:
-- Detecta unidades en la imagen.
-- Para cada unidad detectada, detecta su voto por el mini-logo circular (normalmente en una esquina).
+1. IDENTIFICACIÓN DE UNIDADES:
+- Usa solo esta lista: [${namesList}]
+- Si ves más de una unidad igual, identifícalas todas (qty: 1 por cada una, o suma el total).
+- No ignores unidades repetidas.
 
-RESTRICCIONES (OBLIGATORIAS):
-- "name" debe ser EXACTAMENTE uno de estos nombres (canónicos, en español): [${namesList}]
-- "vote" debe ser EXACTAMENTE uno de: "voto1","voto2",...,"voto13"
-- "qty" debe ser un entero >= 1
-- Devuelve COMO MÁXIMO ${Math.max(1, Math.min(12, Number(maxCount) || 1))} elementos en "found" (si dudas, devuelve menos).
-- Si no estás seguro de una unidad o voto: NO la incluyas (no inventes).
-- Devuelve SOLO JSON VÁLIDO. Si no encuentras nada: {"found":[]}
+2. IDENTIFICACIÓN DE VOTOS (POR DISEÑO):
+Mira el icono circular pequeño en la esquina de cada carta:
+- Icono Rojo (Puño) -> "voto2"
+- Icono Azul (Alas/Rayas) -> "voto3"
+- Icono Morado (Mirilla) -> "voto4"
+- Icono Verde (Ojo) -> "voto5"
+- Icono Dorado (Monedas) -> "voto6"
+- Icono Rojo (Martillo) -> "voto7"
+- Icono Cian (Tornado) -> "voto8"
+- Vara con Estrella -> "voto9"
+- Gris (Engranaje) -> "voto10"
+- Blanco/Negro (Espada) -> "voto11"
+- Rojo (Remolino) -> "voto12"
+- Vara con Estrella y un "2" -> "voto13"
+- SIN ICONO -> "voto"
 
-ALIAS (para ayudarte a reconocerlos, PERO NO LOS DEVUELVAS COMO name):
-${aliasesBlock}
-
-FORMATO:
-{"found":[{"name":"...","vote":"voto7","qty":1}]}`.trim();
-
+3. FORMATO DE SALIDA (JSON ESTRICTO):
+Solo responde con el objeto JSON. No escribas nada más.
+{"found": [{"name": "Nombre Exacto", "vote": "votoX", "qty": 1}]}`;
 
 
     const result = await model.generateContent([
