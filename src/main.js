@@ -55,7 +55,9 @@ const TD_MOBILE_MQ =
 const SCANNER_TEST_USER = "UN66467019";
 const SCANNER_TEST_PASS = "1234";
 const SCANNER_VECTOR_SIZE = 40;
-const SCANNER_MATCH_THRESHOLD = 0.76;
+// Umbral ajustado: demasiada dureza => 0 detecciones.
+// Se compensa con filtro por "gap" y supresión de solapamientos.
+const SCANNER_MATCH_THRESHOLD = 0.70;
 const p1 = "AIzaSyAvyTL"; 
 const p2 = "nMFYN8E92ijisr"; 
 const p3 = "5dDFpyQS__EmnA"; 
@@ -1402,7 +1404,7 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
       bestGlobal = { ...best, rect: crop };
     }
     const gap = best.similarity - (second?.similarity ?? 0);
-    if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.01) continue;
+    if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.006) continue;
     rawHits.push({ ...best, rect: crop });
   }
 
@@ -1417,7 +1419,7 @@ async function scannerAnalyzeImageDataUrl(dataUrl) {
       }
     }
     if (!overlaps) selected.push(h);
-    if (selected.length >= 8) break;
+    if (selected.length >= 12) break;
   }
 
   const merged = new Map();
