@@ -39,29 +39,37 @@ let voteDialogEl = null;
 /** @type {{mode:'calc'|'trade', unitName:string, side:string, unit:Unit|null}} */
 let modalCtx = { mode: "calc", unitName: "", side: "left", unit: null };
 
-/** @type {string} última búsqueda calculadora / trade */
+/** @type {string} última búsqueda calculadora / trade / values */
 let lastSearchCalc = "";
 let lastSearchTrade = "";
+let lastSearchValues = "";
 
-/** @type {"rarity-desc" | "rarity-asc" | "name" | "value-desc"} */
-let unitSortMode =
-  typeof localStorage !== "undefined" &&
-  ["rarity-desc", "rarity-asc", "name", "value-desc"].includes(
-    localStorage.getItem("tdhub_sort") || "",
-  )
-    ? /** @type {any} */ (localStorage.getItem("tdhub_sort"))
-    : "rarity-desc";
+function readRarityFilter(storageKey) {
+  const saved = localStorage.getItem(storageKey) || "all";
+  return saved === "all" || RARITY_IDS_DESC.includes(saved) ? saved : "all";
+}
+
+/** @type {"all" | string} */
+let calcRarityFilter =
+  typeof localStorage !== "undefined"
+    ? readRarityFilter("tdhub_calc_rarity")
+    : "all";
 
 /** @type {"all" | string} */
 let tradeRarityFilter =
-  typeof localStorage !== "undefined" &&
-  (localStorage.getItem("tdhub_trade_rarity") === "all" ||
-    RARITY_IDS_DESC.includes(localStorage.getItem("tdhub_trade_rarity") || ""))
-    ? localStorage.getItem("tdhub_trade_rarity") || "all"
+  typeof localStorage !== "undefined"
+    ? readRarityFilter("tdhub_trade_rarity")
+    : "all";
+
+/** @type {"all" | string} */
+let valuesRarityFilter =
+  typeof localStorage !== "undefined"
+    ? readRarityFilter("tdhub_values_rarity")
     : "all";
 
 /** Tras escribir en el buscador, re-render quita foco — lo restauramos solo en ese caso. */
-let pendingToolbarFocusRoute = /** @type {null | "calc" | "trade"} */ (null);
+let pendingToolbarFocusRoute =
+  /** @type {null | "calc" | "trade" | "values"} */ (null);
 
 /** Cuenta atrás pantalla Scanner (se limpia al cambiar de ruta). */
 let scannerCountdownTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
@@ -169,7 +177,8 @@ function clearScannerCountdown() {
 
 function rememberRouteScroll() {
   const route = currentRoute();
-  if (route !== "calc" && route !== "trade" && route !== "tester") return;
+  if (route !== "calc" && route !== "trade" && route !== "values" && route !== "tester")
+    return;
   const mainEl = document.querySelector("main.content");
   if (!mainEl) return;
   routeScrollTop[route] = mainEl.scrollTop || 0;
@@ -359,19 +368,11 @@ function cardRarityClass(rareza) {
 }
 
 function compareUnits(a, b) {
-  if (unitSortMode === "name") {
-    return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
-  }
-  if (unitSortMode === "value-desc") {
-    const dv = (Number(b.valor) || 0) - (Number(a.valor) || 0);
-    if (dv !== 0) return dv;
-    return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
-  }
   const ra = rarityRank(a.rareza);
   const rb = rarityRank(b.rareza);
-  if (ra !== rb) {
-    return unitSortMode === "rarity-asc" ? ra - rb : rb - ra;
-  }
+  if (ra !== rb) return rb - ra;
+  const dv = (Number(b.valor) || 0) - (Number(a.valor) || 0);
+  if (dv !== 0) return dv;
   return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
 }
 
@@ -429,41 +430,30 @@ function buildRarityBadge(rareza) {
   return badge;
 }
 
-/** @param {"calc"|"trade"} route */
-function buildSortSelect(route) {
-  const wrap = document.createElement("label");
-  wrap.className = "sort-select-wrap";
-  const lbl = document.createElement("span");
-  lbl.className = "sort-select-label";
-  lbl.textContent = t(lang, "sort.label");
-  const sel = document.createElement("select");
-  sel.className = "sort-select";
-  sel.setAttribute("data-td-sort", route);
-  const options = [
-    ["rarity-desc", "sort.rarity_desc"],
-    ["rarity-asc", "sort.rarity_asc"],
-    ["name", "sort.name"],
-    ["value-desc", "sort.value_desc"],
-  ];
-  for (const [value, key] of options) {
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = t(lang, key);
-    if (unitSortMode === value) opt.selected = true;
-    sel.appendChild(opt);
-  }
-  sel.addEventListener("change", () => {
-    unitSortMode = /** @type {typeof unitSortMode} */ (sel.value);
-    localStorage.setItem("tdhub_sort", unitSortMode);
-    pendingToolbarFocusRoute = route;
-    renderApp();
-  });
-  wrap.appendChild(lbl);
-  wrap.appendChild(sel);
-  return wrap;
+/** @param {"calc"|"trade"|"values"} route */
+function getRarityFilterForRoute(route) {
+  if (route === "calc") return calcRarityFilter;
+  if (route === "values") return valuesRarityFilter;
+  return tradeRarityFilter;
 }
 
-function buildRarityFilterBar() {
+/** @param {"calc"|"trade"|"values"} route */
+function setRarityFilterForRoute(route, value) {
+  if (route === "calc") calcRarityFilter = value;
+  else if (route === "values") valuesRarityFilter = value;
+  else tradeRarityFilter = value;
+  const key =
+    route === "calc"
+      ? "tdhub_calc_rarity"
+      : route === "values"
+        ? "tdhub_values_rarity"
+        : "tdhub_trade_rarity";
+  localStorage.setItem(key, value);
+}
+
+/** @param {"calc"|"trade"|"values"} route */
+function buildRarityFilterBar(route) {
+  const current = getRarityFilterForRoute(route);
   const bar = document.createElement("div");
   bar.className = "rarity-filter-bar";
 
@@ -476,12 +466,11 @@ function buildRarityFilterBar() {
 
   const allBtn = document.createElement("button");
   allBtn.type = "button";
-  allBtn.className = `rarity-chip rarity-chip--all${tradeRarityFilter === "all" ? " active" : ""}`;
+  allBtn.className = `rarity-chip rarity-chip--all${current === "all" ? " active" : ""}`;
   allBtn.textContent = t(lang, "filter.all");
   allBtn.onclick = () => {
-    tradeRarityFilter = "all";
-    localStorage.setItem("tdhub_trade_rarity", tradeRarityFilter);
-    pendingToolbarFocusRoute = "trade";
+    setRarityFilterForRoute(route, "all");
+    pendingToolbarFocusRoute = route;
     renderApp();
   };
   chips.appendChild(allBtn);
@@ -490,12 +479,11 @@ function buildRarityFilterBar() {
     const btn = document.createElement("button");
     btn.type = "button";
     const cls = cardRarityClass(id);
-    btn.className = `rarity-chip ${cls}${tradeRarityFilter === id ? " active" : ""}`.trim();
+    btn.className = `rarity-chip ${cls}${current === id ? " active" : ""}`.trim();
     btn.textContent = rarityLabel(lang, id);
     btn.onclick = () => {
-      tradeRarityFilter = id;
-      localStorage.setItem("tdhub_trade_rarity", tradeRarityFilter);
-      pendingToolbarFocusRoute = "trade";
+      setRarityFilterForRoute(route, id);
+      pendingToolbarFocusRoute = route;
       renderApp();
     };
     chips.appendChild(btn);
@@ -794,14 +782,16 @@ function buildCalcView() {
   };
 
   tb.appendChild(inp);
-  tb.appendChild(buildSortSelect("calc"));
   tb.appendChild(pill);
   tb.appendChild(clearBtn);
 
   const grid = document.createElement("div");
   grid.className = "unit-grid";
 
-  for (const u of filterSortUnits(q)) {
+  wrap.appendChild(tb);
+  wrap.appendChild(buildRarityFilterBar("calc"));
+
+  for (const u of getFilteredUnits(q, calcRarityFilter)) {
     const sum = calcSumForUnit(u.nombre);
     const card = document.createElement("div");
     card.className = `unit-card ${cardRarityClass(u.rareza)}`.trim();
@@ -875,7 +865,6 @@ function buildCalcView() {
     grid.appendChild(card);
   }
 
-  wrap.appendChild(tb);
   wrap.appendChild(grid);
   return wrap;
 }
@@ -1067,7 +1056,7 @@ function buildTradeView() {
 
   wrap.appendChild(tb);
   wrap.appendChild(scoreBox);
-  wrap.appendChild(buildRarityFilterBar());
+  wrap.appendChild(buildRarityFilterBar("trade"));
   grid.appendChild(buildTradeHalf("left", filt));
   grid.appendChild(buildTradeHalf("right", filt));
   wrap.appendChild(grid);
@@ -1078,14 +1067,19 @@ function buildHomeView() {
   const d = document.createElement("div");
   d.className = "view-home";
 
+  const disclaimer = document.createElement("div");
+  disclaimer.className = "fanmade-banner";
+  disclaimer.innerHTML = `<strong>${escapeHtml(t(lang, "main.home_badge"))}</strong> — ${escapeHtml(t(lang, "main.home_fanmade_notice"))}`;
+  d.appendChild(disclaimer);
+
   const hero = document.createElement("section");
-  hero.className = "hero hero--official";
+  hero.className = "hero hero--fanmade";
   hero.innerHTML = `
     <p class="hero-kicker">${escapeHtml(t(lang, "main.home_tagline"))}</p>
     <h2>${escapeHtml(t(lang, "main.bienvenida"))}</h2>
     <p class="hero-sub muted">${escapeHtml(t(lang, "main.home_subtitle"))}</p>
     <div class="hero-badges">
-      <span class="hero-badge hero-badge--official">${escapeHtml(t(lang, "main.home_badge"))}</span>
+      <span class="hero-badge hero-badge--fanmade">${escapeHtml(t(lang, "main.home_badge"))}</span>
       <span class="hero-badge hero-badge--live">${escapeHtml(t(lang, "main.home_stat_live"))}</span>
     </div>`;
 
@@ -1146,7 +1140,7 @@ function buildHomeView() {
 
   card("calc", "∑", t(lang, "nav.calc"), t(lang, "main.calc_desc"), "#/calc");
   card("trade", "⇄", t(lang, "nav.trade"), t(lang, "main.trade_desc"), "#/trade");
-  card("scanner", "◎", t(lang, "nav.scanner"), t(lang, "main.scanner_desc"), "#/scanner");
+  card("values", "▦", t(lang, "nav.values"), t(lang, "main.values_desc"), "#/values");
   if (testerAccessAllowed()) {
     card("tester", "⚙", t(lang, "nav.tester"), t(lang, "main.tester_desc"), "#/tester");
   }
@@ -2128,6 +2122,145 @@ function buildTesterView() {
   return wrap;
 }
 
+function buildValuesView() {
+  const q = lastSearchValues;
+  const wrap = document.createElement("div");
+  wrap.className = "view-values";
+
+  wrap.appendChild(buildPageHeader("values.title", "values.subtitle"));
+
+  const tb = document.createElement("div");
+  tb.className = "toolbar";
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.setAttribute("data-td-search", "values");
+  inp.placeholder = t(lang, "values.search");
+  inp.value = q;
+  inp.autocomplete = "off";
+  inp.spellcheck = false;
+  inp.inputMode = "search";
+  inp.addEventListener("input", () => {
+    lastSearchValues = inp.value;
+    pendingToolbarFocusRoute = "values";
+    renderApp();
+  });
+  tb.appendChild(inp);
+  wrap.appendChild(tb);
+  wrap.appendChild(buildRarityFilterBar("values"));
+
+  const filtered = getFilteredUnits(q, valuesRarityFilter);
+
+  const unitsSection = document.createElement("section");
+  unitsSection.className = "values-section";
+  const unitsHead = document.createElement("h3");
+  unitsHead.className = "values-section-title";
+  unitsHead.textContent = t(lang, "values.units_heading");
+  unitsSection.appendChild(unitsHead);
+
+  if (!filtered.length) {
+    const empty = document.createElement("p");
+    empty.className = "values-empty muted";
+    empty.textContent = t(lang, "values.no_results");
+    unitsSection.appendChild(empty);
+  } else {
+    const unitsWrap = document.createElement("div");
+    unitsWrap.className = "values-table-wrap";
+    const unitsTable = document.createElement("table");
+    unitsTable.className = "values-table values-table--units";
+    unitsTable.innerHTML = `
+      <thead><tr>
+        <th></th>
+        <th>${escapeHtml(t(lang, "values.col_unit"))}</th>
+        <th>${escapeHtml(t(lang, "values.col_rarity"))}</th>
+        <th>${escapeHtml(t(lang, "values.col_base"))}</th>
+      </tr></thead>`;
+    const tbody = document.createElement("tbody");
+    for (const u of filtered) {
+      const tr = document.createElement("tr");
+      tr.className = cardRarityClass(u.rareza);
+      const imgTd = document.createElement("td");
+      imgTd.className = "values-cell-img";
+      if (u.imagen) {
+        const img = document.createElement("img");
+        img.src = assetUrl(u.imagen);
+        img.alt = "";
+        imgTd.appendChild(img);
+      }
+      const nameTd = document.createElement("td");
+      nameTd.className = "values-cell-name";
+      nameTd.textContent = unitDisplayName(u);
+      const rareTd = document.createElement("td");
+      if (u.rareza) rareTd.appendChild(buildRarityBadge(u.rareza));
+      const valTd = document.createElement("td");
+      valTd.className = "values-cell-num";
+      valTd.textContent = String(u.valor);
+      tr.appendChild(imgTd);
+      tr.appendChild(nameTd);
+      tr.appendChild(rareTd);
+      tr.appendChild(valTd);
+      tbody.appendChild(tr);
+    }
+    unitsTable.appendChild(tbody);
+    unitsWrap.appendChild(unitsTable);
+    unitsSection.appendChild(unitsWrap);
+  }
+  wrap.appendChild(unitsSection);
+
+  const votesSection = document.createElement("section");
+  votesSection.className = "values-section";
+  const votesHead = document.createElement("h3");
+  votesHead.className = "values-section-title";
+  votesHead.textContent = t(lang, "values.votes_heading");
+  const votesHint = document.createElement("p");
+  votesHint.className = "values-section-hint muted";
+  votesHint.textContent = t(lang, "values.votes_hint");
+  votesSection.appendChild(votesHead);
+  votesSection.appendChild(votesHint);
+
+  if (filtered.length) {
+    const votesWrap = document.createElement("div");
+    votesWrap.className = "values-table-wrap values-table-wrap--wide";
+    const votesTable = document.createElement("table");
+    votesTable.className = "values-table values-table--votes";
+    const voteHead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    const unitTh = document.createElement("th");
+    unitTh.className = "values-sticky-col";
+    unitTh.textContent = t(lang, "values.col_unit");
+    headRow.appendChild(unitTh);
+    for (let i = 1; i <= 13; i++) {
+      const th = document.createElement("th");
+      th.textContent = `V${i}`;
+      headRow.appendChild(th);
+    }
+    voteHead.appendChild(headRow);
+    votesTable.appendChild(voteHead);
+
+    const voteBody = document.createElement("tbody");
+    for (const u of filtered) {
+      const tr = document.createElement("tr");
+      tr.className = cardRarityClass(u.rareza);
+      const nameTd = document.createElement("td");
+      nameTd.className = "values-sticky-col values-cell-name";
+      nameTd.textContent = unitDisplayName(u);
+      tr.appendChild(nameTd);
+      for (let i = 1; i <= 13; i++) {
+        const td = document.createElement("td");
+        td.className = "values-cell-num";
+        td.textContent = String(voteValueForUnit(u, `voto${i}`));
+        tr.appendChild(td);
+      }
+      voteBody.appendChild(tr);
+    }
+    votesTable.appendChild(voteBody);
+    votesWrap.appendChild(votesTable);
+    votesSection.appendChild(votesWrap);
+  }
+  wrap.appendChild(votesSection);
+
+  return wrap;
+}
+
 function buildCreditsView() {
   const d = document.createElement("div");
   d.className = "credits-box view-credits";
@@ -2200,7 +2333,8 @@ function currentRoute() {
   if (h === "/" || h === "/home") return "home";
   if (h.startsWith("/calc")) return "calc";
   if (h.startsWith("/trade")) return "trade";
-  if (h.startsWith("/scanner")) return "scanner";
+  if (h.startsWith("/values")) return "values";
+  if (h.startsWith("/scanner")) return "home";
   if (h.startsWith("/tester")) return "tester";
   if (h.startsWith("/credits")) return "credits";
   return "home";
@@ -2240,7 +2374,7 @@ function renderApp() {
     { r: "#/home", k: "nav.home", rr: "home" },
     { r: "#/calc", k: "nav.calc", rr: "calc" },
     { r: "#/trade", k: "nav.trade", rr: "trade" },
-    { r: "#/scanner", k: "nav.scanner", rr: "scanner" },
+    { r: "#/values", k: "nav.values", rr: "values" },
     ...(testerAccessAllowed()
       ? [{ r: "#/tester", k: "nav.tester", rr: "tester" }]
       : []),
@@ -2285,7 +2419,7 @@ function renderApp() {
   } else if (route === "home") main.appendChild(buildHomeView());
   else if (route === "calc") main.appendChild(buildCalcView());
   else if (route === "trade") main.appendChild(buildTradeView());
-  else if (route === "scanner") main.appendChild(buildScannerView());
+  else if (route === "values") main.appendChild(buildValuesView());
   else if (route === "tester") main.appendChild(buildTesterView());
   else main.appendChild(buildCreditsView());
 
@@ -2296,6 +2430,7 @@ function renderApp() {
 
   if (route === "calc") maybeRefocusToolbarSearch("calc");
   else if (route === "trade") maybeRefocusToolbarSearch("trade");
+  else if (route === "values") maybeRefocusToolbarSearch("values");
 }
 
 function setLang(newLang) {
