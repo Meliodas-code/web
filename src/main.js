@@ -1,6 +1,6 @@
 import { assetUrl } from "./assetUrl.js";
 import { loadUnitsAndVotes } from "./supabase/loadData.js";
-import { rarityRank, normalizeRarity } from "./rarity.js";
+import { rarityRank, normalizeRarity, rarityLabel } from "./rarity.js";
 import { t } from "./strings.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -38,6 +38,15 @@ let modalCtx = { mode: "calc", unitName: "", side: "left", unit: null };
 let lastSearchCalc = "";
 let lastSearchTrade = "";
 
+/** @type {"rarity-desc" | "rarity-asc" | "name" | "value-desc"} */
+let unitSortMode =
+  typeof localStorage !== "undefined" &&
+  ["rarity-desc", "rarity-asc", "name", "value-desc"].includes(
+    localStorage.getItem("tdhub_sort") || "",
+  )
+    ? /** @type {any} */ (localStorage.getItem("tdhub_sort"))
+    : "rarity-desc";
+
 /** Tras escribir en el buscador, re-render quita foco — lo restauramos solo en ese caso. */
 let pendingToolbarFocusRoute = /** @type {null | "calc" | "trade"} */ (null);
 
@@ -52,8 +61,13 @@ const TD_MOBILE_MQ =
     ? window.matchMedia("(max-width: 640px)")
     : null;
 
-const SCANNER_TEST_USER = "UN66467019";
-const SCANNER_TEST_PASS = "1234";
+const TESTER_ALLOWED_IPS = String(import.meta.env.VITE_TESTER_ALLOWED_IPS || "")
+  .split(",")
+  .map((ip) => ip.trim())
+  .filter(Boolean);
+
+let testerIpStatus = /** @type {"pending" | "allowed" | "denied"} */ ("pending");
+let testerClientIp = "";
 const SCANNER_VECTOR_SIZE = 40;
 // Umbral ajustado: demasiada dureza => 0 detecciones.
 // Se compensa con filtro por "gap" y supresión de solapamientos.
@@ -83,7 +97,6 @@ const CREDITS_PROFILES = [
   },
 ];
 
-let scannerTesterAuth = false;
 let scannerTesterError = "";
 let scannerTesterNotice = "";
 let scannerTesterImageDataUrl = "";
@@ -332,14 +345,26 @@ function cardRarityClass(rareza) {
   return map[r] || "";
 }
 
+function compareUnits(a, b) {
+  if (unitSortMode === "name") {
+    return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
+  }
+  if (unitSortMode === "value-desc") {
+    const dv = (Number(b.valor) || 0) - (Number(a.valor) || 0);
+    if (dv !== 0) return dv;
+    return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
+  }
+  const ra = rarityRank(a.rareza);
+  const rb = rarityRank(b.rareza);
+  if (ra !== rb) {
+    return unitSortMode === "rarity-asc" ? ra - rb : rb - ra;
+  }
+  return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
+}
+
 function filterSortUnits(q) {
   const query = (q || "").toLowerCase().trim();
-  const list = [...units].sort((a, b) => {
-    const ra = rarityRank(a.rareza);
-    const rb = rarityRank(b.rareza);
-    if (ra !== rb) return ra - rb;
-    return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
-  });
+  const list = [...units].sort(compareUnits);
 
   if (!query) return list;
   const tokens = query.split(/\s+/).filter(Boolean);
@@ -350,6 +375,86 @@ function filterSortUnits(q) {
       tokens.every((tok) => s.includes(tok));
     return every(n_es) || every(n_en);
   });
+}
+
+function testerAccessAllowed() {
+  if (!TESTER_ALLOWED_IPS.length) return false;
+  return testerIpStatus === "allowed";
+}
+
+async function resolveTesterIpAccess() {
+  if (!TESTER_ALLOWED_IPS.length) {
+    testerIpStatus = "denied";
+    return;
+  }
+  testerIpStatus = "pending";
+  try {
+    const res = await fetch("https://api.ipify.org?format=json", {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("ip fetch failed");
+    const data = await res.json();
+    testerClientIp = String(data?.ip || "").trim();
+    testerIpStatus = TESTER_ALLOWED_IPS.includes(testerClientIp)
+      ? "allowed"
+      : "denied";
+  } catch {
+    testerIpStatus = "denied";
+  }
+}
+
+function buildRarityBadge(rareza) {
+  const badge = document.createElement("span");
+  badge.className = `rarity-badge ${cardRarityClass(rareza)}`.trim();
+  badge.textContent = rarityLabel(lang, rareza);
+  return badge;
+}
+
+/** @param {"calc"|"trade"} route */
+function buildSortSelect(route) {
+  const wrap = document.createElement("label");
+  wrap.className = "sort-select-wrap";
+  const lbl = document.createElement("span");
+  lbl.className = "sort-select-label";
+  lbl.textContent = t(lang, "sort.label");
+  const sel = document.createElement("select");
+  sel.className = "sort-select";
+  sel.setAttribute("data-td-sort", route);
+  const options = [
+    ["rarity-desc", "sort.rarity_desc"],
+    ["rarity-asc", "sort.rarity_asc"],
+    ["name", "sort.name"],
+    ["value-desc", "sort.value_desc"],
+  ];
+  for (const [value, key] of options) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = t(lang, key);
+    if (unitSortMode === value) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.addEventListener("change", () => {
+    unitSortMode = /** @type {typeof unitSortMode} */ (sel.value);
+    localStorage.setItem("tdhub_sort", unitSortMode);
+    pendingToolbarFocusRoute = route;
+    renderApp();
+  });
+  wrap.appendChild(lbl);
+  wrap.appendChild(sel);
+  return wrap;
+}
+
+function buildPageHeader(titleKey, subtitleKey) {
+  const head = document.createElement("header");
+  head.className = "page-header";
+  const h = document.createElement("h2");
+  h.textContent = t(lang, titleKey);
+  const sub = document.createElement("p");
+  sub.className = "page-header-sub muted";
+  sub.textContent = t(lang, subtitleKey);
+  head.appendChild(h);
+  head.appendChild(sub);
+  return head;
 }
 
 /** @returns {Record<string, number>} */
@@ -492,10 +597,8 @@ function tradeInventoryEntries(sideName) {
     }
   }
   out.sort((a, b) => {
-    const n = a.unit.nombre.localeCompare(b.unit.nombre, "es", {
-      sensitivity: "base",
-    });
-    if (n !== 0) return n;
+    const unitCmp = compareUnits(a.unit, b.unit);
+    if (unitCmp !== 0) return unitCmp;
     const ai = Number(String(a.voteKey).replace(/\D/g, "")) || 0;
     const bi = Number(String(b.voteKey).replace(/\D/g, "")) || 0;
     return ai - bi;
@@ -596,6 +699,8 @@ function buildCalcView() {
   const wrap = document.createElement("div");
   wrap.className = "view-calc";
 
+  wrap.appendChild(buildPageHeader("calc.title", "calc.subtitle"));
+
   const tb = document.createElement("div");
   tb.className = "toolbar";
   const inp = document.createElement("input");
@@ -627,6 +732,7 @@ function buildCalcView() {
   };
 
   tb.appendChild(inp);
+  tb.appendChild(buildSortSelect("calc"));
   tb.appendChild(pill);
   tb.appendChild(clearBtn);
 
@@ -662,9 +768,17 @@ function buildCalcView() {
     face.src = u.imagen ? assetUrl(u.imagen) : "";
     face.alt = "";
 
+    const meta = document.createElement("div");
+    meta.className = "unit-meta";
     const name = document.createElement("div");
     name.className = "unit-name";
     name.textContent = unitDisplayName(u);
+    meta.appendChild(name);
+    if (u.rareza) meta.appendChild(buildRarityBadge(u.rareza));
+
+    const val = document.createElement("div");
+    val.className = "unit-value";
+    val.textContent = String(u.valor);
 
     const ctl = document.createElement("div");
     ctl.className = "controls";
@@ -693,7 +807,8 @@ function buildCalcView() {
 
     card.appendChild(head);
     card.appendChild(face);
-    card.appendChild(name);
+    card.appendChild(meta);
+    card.appendChild(val);
     card.appendChild(ctl);
     grid.appendChild(card);
   }
@@ -740,10 +855,11 @@ function buildTradeHalf(sideName, filtered) {
     const nEl = document.createElement("div");
     nEl.className = "name";
     nEl.textContent = unitDisplayName(u);
+    meta.appendChild(nEl);
+    if (u.rareza) meta.appendChild(buildRarityBadge(u.rareza));
     const vEl = document.createElement("div");
     vEl.className = "val";
     vEl.textContent = `${u.valor}`;
-    meta.appendChild(nEl);
     meta.appendChild(vEl);
 
     const vt = document.createElement("button");
@@ -802,6 +918,8 @@ function buildTradeView() {
   const wrap = document.createElement("div");
   wrap.className = "view-trade";
 
+  wrap.appendChild(buildPageHeader("trade.title", "trade.subtitle"));
+
   const tb = document.createElement("div");
   tb.className = "toolbar";
   const inp = document.createElement("input");
@@ -831,6 +949,7 @@ function buildTradeView() {
   };
 
   tb.appendChild(inp);
+  tb.appendChild(buildSortSelect("trade"));
   tb.appendChild(clearBtn);
 
   const leftT = tradeSideTotal(tradeLeftCounts);
@@ -883,47 +1002,81 @@ function buildTradeView() {
 function buildHomeView() {
   const d = document.createElement("div");
   d.className = "view-home";
-  d.innerHTML = `
-    <div class="hero">
-      <h2>${escapeHtml(t(lang, "main.bienvenida"))}</h2>
-      <p class="muted">${escapeHtml(t(lang, "main.home_subtitle"))}</p>
-      <p><span class="badge" style="display:inline-block;margin-top:8px">${escapeHtml(t(lang, "main.home_badge"))}</span></p>
+
+  const hero = document.createElement("section");
+  hero.className = "hero hero--official";
+  hero.innerHTML = `
+    <p class="hero-kicker">${escapeHtml(t(lang, "main.home_tagline"))}</p>
+    <h2>${escapeHtml(t(lang, "main.bienvenida"))}</h2>
+    <p class="hero-sub muted">${escapeHtml(t(lang, "main.home_subtitle"))}</p>
+    <div class="hero-badges">
+      <span class="hero-badge hero-badge--official">${escapeHtml(t(lang, "main.home_badge"))}</span>
+      <span class="hero-badge hero-badge--live">${escapeHtml(t(lang, "main.home_stat_live"))}</span>
     </div>`;
-  const hero = d.querySelector(".hero");
-  if (hero) {
-    const thanks = document.createElement("p");
-    thanks.className = "muted hero-value-list-credit";
-    thanks.append(
-      document.createTextNode(`${t(lang, "main.list_values_thanks")} `),
-    );
-    const listLink = document.createElement("a");
-    listLink.href = OFFICIAL_VALUE_LIST_URL;
-    listLink.target = "_blank";
-    listLink.rel = "noopener noreferrer";
-    listLink.textContent = t(lang, "main.official_list_link");
-    thanks.appendChild(listLink);
-    const badgeP = hero.querySelector("p:last-of-type");
-    if (badgeP?.querySelector(".badge")) hero.insertBefore(thanks, badgeP);
-    else hero.appendChild(thanks);
+
+  const stats = document.createElement("div");
+  stats.className = "hero-stats";
+  const statItems = [
+    [String(units.length), t(lang, "main.home_stat_units")],
+    ["13", t(lang, "main.home_stat_votes")],
+    ["✓", t(lang, "main.home_stat_live")],
+  ];
+  for (const [val, lbl] of statItems) {
+    const cell = document.createElement("div");
+    cell.className = "hero-stat";
+    cell.innerHTML = `<span class="hero-stat-val">${escapeHtml(val)}</span><span class="hero-stat-lbl">${escapeHtml(lbl)}</span>`;
+    stats.appendChild(cell);
   }
+  hero.appendChild(stats);
+
+  const thanks = document.createElement("p");
+  thanks.className = "muted hero-value-list-credit";
+  thanks.append(
+    document.createTextNode(`${t(lang, "main.list_values_thanks")} `),
+  );
+  const listLink = document.createElement("a");
+  listLink.href = OFFICIAL_VALUE_LIST_URL;
+  listLink.target = "_blank";
+  listLink.rel = "noopener noreferrer";
+  listLink.textContent = t(lang, "main.official_list_link");
+  thanks.appendChild(listLink);
+  hero.appendChild(thanks);
+  d.appendChild(hero);
+
   const grid = document.createElement("div");
   grid.className = "home-cards";
 
-  function card(klass, heading, txt, goto) {
-    const el = document.createElement("div");
+  function card(klass, icon, heading, txt, goto) {
+    const el = document.createElement("article");
     el.className = `home-card ${klass}`.trim();
-    el.innerHTML = `<h3>${escapeHtml(heading)}</h3><p class="muted" style="white-space:pre-line">${escapeHtml(txt)}</p>`;
+    const iconEl = document.createElement("div");
+    iconEl.className = "home-card-icon";
+    iconEl.setAttribute("aria-hidden", "true");
+    iconEl.textContent = icon;
+    const h3 = document.createElement("h3");
+    h3.textContent = heading;
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = txt;
     const b = document.createElement("button");
+    b.type = "button";
     b.textContent = t(lang, "main.open");
     b.onclick = () => navigate(goto);
+    el.appendChild(iconEl);
+    el.appendChild(h3);
+    el.appendChild(p);
     el.appendChild(b);
     grid.appendChild(el);
   }
 
-  card("", t(lang, "nav.calc"), t(lang, "main.calc_desc"), "#/calc");
-  card("trade", t(lang, "nav.trade"), t(lang, "main.trade_desc"), "#/trade");
-  card("scanner", t(lang, "nav.scanner"), t(lang, "main.scanner_desc"), "#/scanner");
-  card("scanner", t(lang, "nav.tester"), t(lang, "main.tester_desc"), "#/tester");
+  card("calc", "∑", t(lang, "nav.calc"), t(lang, "main.calc_desc"), "#/calc");
+  card("trade", "⇄", t(lang, "nav.trade"), t(lang, "main.trade_desc"), "#/trade");
+  card("scanner", "◎", t(lang, "nav.scanner"), t(lang, "main.scanner_desc"), "#/scanner");
+  if (testerAccessAllowed()) {
+    card("tester", "⚙", t(lang, "nav.tester"), t(lang, "main.tester_desc"), "#/tester");
+  }
+
+  d.appendChild(grid);
 
   const foot = document.createElement("p");
   foot.className = "muted foot-credits-link";
@@ -931,7 +1084,6 @@ function buildHomeView() {
   a.href = "#/credits";
   a.textContent = `→ ${t(lang, "nav.credits")}`;
   foot.appendChild(a);
-  d.appendChild(grid);
   d.appendChild(foot);
   return d;
 }
@@ -1175,6 +1327,7 @@ function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1
   const raw = ctx.getImageData(0, 0, size, size).data;
   return scannerFeatureFromImageData(raw, size, size);
 }
+
 
 function scannerSimilarity(vecA, vecB) {
   if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
@@ -1607,40 +1760,14 @@ function buildTesterView() {
     <h2 class="scanner-title">${escapeHtml(t(lang, "scanner.tester_title"))}</h2>
     <p class="scanner-wip">${escapeHtml(t(lang, "scanner.tester_desc"))}</p>`;
 
-  if (!scannerTesterAuth) {
-    const form = document.createElement("form");
-    form.className = "scanner-login";
-    form.innerHTML = `
-      <label>
-        <span>${escapeHtml(t(lang, "scanner.user"))}</span>
-        <input name="user" type="text" autocomplete="username" required />
-      </label>
-      <label>
-        <span>${escapeHtml(t(lang, "scanner.password"))}</span>
-        <input name="pass" type="password" autocomplete="current-password" required />
-      </label>
-      <button type="submit">${escapeHtml(t(lang, "scanner.login"))}</button>
-    `;
-    form.addEventListener("submit", (ev) => {
-      ev.preventDefault();
-      const fd = new FormData(form);
-      const user = String(fd.get("user") || "");
-      const pass = String(fd.get("pass") || "");
-      if (user === SCANNER_TEST_USER && pass === SCANNER_TEST_PASS) {
-        scannerTesterAuth = true;
-        scannerResetNoticeError();
-      } else {
-        scannerTesterError = t(lang, "scanner.login_error");
-      }
-      renderApp();
-    });
-    if (scannerTesterError) {
-      const err = document.createElement("p");
-      err.className = "scanner-msg scanner-msg--error";
-      err.textContent = scannerTesterError;
-      card.appendChild(err);
-    }
-    card.appendChild(form);
+  if (!testerAccessAllowed()) {
+    const msg = document.createElement("p");
+    msg.className = "scanner-msg scanner-msg--error";
+    msg.textContent =
+      testerIpStatus === "pending"
+        ? t(lang, "scanner.ip_checking")
+        : t(lang, "scanner.ip_denied");
+    card.appendChild(msg);
     wrap.appendChild(card);
     return wrap;
   }
@@ -2023,17 +2150,25 @@ function renderApp() {
   const side = document.createElement("aside");
   side.className = "sidebar";
 
+  const brand = document.createElement("div");
+  brand.className = "sidebar-brand";
   const title = document.createElement("h1");
-  title.textContent = "SORCERER CALCULATOR";
-
-  side.appendChild(title);
+  title.textContent = "SORCERER TD";
+  const tagline = document.createElement("p");
+  tagline.className = "sidebar-tagline";
+  tagline.textContent = t(lang, "main.sidebar_tagline");
+  brand.appendChild(title);
+  brand.appendChild(tagline);
+  side.appendChild(brand);
 
   const nav = [
     { r: "#/home", k: "nav.home", rr: "home" },
     { r: "#/calc", k: "nav.calc", rr: "calc" },
     { r: "#/trade", k: "nav.trade", rr: "trade" },
     { r: "#/scanner", k: "nav.scanner", rr: "scanner" },
-    { r: "#/tester", k: "nav.tester", rr: "tester" },
+    ...(testerAccessAllowed()
+      ? [{ r: "#/tester", k: "nav.tester", rr: "tester" }]
+      : []),
     { r: "#/credits", k: "nav.credits", rr: "credits" },
   ];
   const cur = currentRoute();
@@ -2063,8 +2198,16 @@ function renderApp() {
   const main = document.createElement("main");
   main.className = "content";
 
-  const route = currentRoute();
-  if (route === "home") main.appendChild(buildHomeView());
+  let route = currentRoute();
+  if (route === "tester" && !testerAccessAllowed()) {
+    if (testerIpStatus === "pending") {
+      main.appendChild(buildTesterView());
+    } else {
+      navigate("#/home");
+      route = "home";
+      main.appendChild(buildHomeView());
+    }
+  } else if (route === "home") main.appendChild(buildHomeView());
   else if (route === "calc") main.appendChild(buildCalcView());
   else if (route === "trade") main.appendChild(buildTradeView());
   else if (route === "scanner") main.appendChild(buildScannerView());
@@ -2111,6 +2254,7 @@ async function bootstrap() {
 
   syncTdMobileAttr();
   renderApp();
+  resolveTesterIpAccess().then(() => renderApp());
 
   window.addEventListener("hashchange", () => {
     renderApp();
