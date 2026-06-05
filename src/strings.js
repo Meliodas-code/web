@@ -11,18 +11,30 @@ export const I18N = {
       credits: "Créditos",
     },
     main: {
-      bienvenida: "BIENVENIDO A LA CALCULADORA DE HECHICEROS",
+      bienvenida: "Calculadora Oficial de Sorcerer TD",
       home_subtitle:
-        "Usa datos en la nube. Despliegue gratis con GitHub Pages u otro hosting estático.",
+        "Herramienta comunitaria para calcular valores, comparar trades y gestionar unidades con datos actualizados en la nube.",
       list_values_thanks:
-        "Agradecemos al equipo de Sorcerer TD Value List por los valores de referencia que hacen posible esta calculadora.",
-      official_list_link: "Documento oficial de la lista (Google Sheets)",
-      home_badge: "Versión web",
+        "Valores de referencia proporcionados por el equipo de Sorcerer TD Value List.",
+      official_list_link: "Lista oficial de valores (Google Sheets)",
+      home_badge: "Herramienta oficial",
+      home_tagline: "Valores · Trades · Unidades",
+      home_stat_units: "Unidades",
+      home_stat_votes: "Votos por unidad",
+      home_stat_live: "Datos en vivo",
       open: "Abrir",
-      calc_desc: "Calcula valor con varios votos por unidad.",
-      trade_desc: "Compara dos ofertas lado a lado.",
-      scanner_desc: "Herramienta de escaneo — disponible pronto.",
-      tester_desc: "Zona de pruebas del escáner con login temporal.",
+      calc_desc: "Suma el valor de tu inventario con soporte para múltiples votos por unidad.",
+      trade_desc: "Compara dos ofertas y descubre si el intercambio es justo.",
+      scanner_desc: "Escanea capturas de pantalla — disponible pronto.",
+      tester_desc: "Zona de pruebas interna del escáner.",
+      sidebar_tagline: "Calculadora oficial",
+    },
+    sort: {
+      label: "Ordenar",
+      rarity_desc: "Rareza (mayor primero)",
+      rarity_asc: "Rareza (menor primero)",
+      name: "Nombre A–Z",
+      value_desc: "Valor (mayor primero)",
     },
     scanner: {
       kicker: "SORCERER CALCULATOR",
@@ -44,6 +56,8 @@ export const I18N = {
       password: "Contraseña",
       login: "Entrar",
       login_error: "Credenciales incorrectas.",
+      ip_denied: "Acceso restringido. Esta sección solo está disponible desde redes autorizadas.",
+      ip_checking: "Verificando acceso…",
       drop_hint:
         "Sube una captura o pégala con Ctrl+V para buscar similitud con unidades.",
       analyze: "Analizar imagen",
@@ -58,6 +72,7 @@ export const I18N = {
     },
     calc: {
       title: "Calculadora de valor",
+      subtitle: "Selecciona unidades y ajusta votos para obtener el valor total.",
       search: "Buscar unidad…",
       total: "Valor total",
       clear_all: "Limpiar todo",
@@ -66,6 +81,7 @@ export const I18N = {
     },
     trade: {
       title: "Comparador de trade",
+      subtitle: "Añade unidades a cada lado y compara el valor total del intercambio.",
       search: "Buscar…",
       clear: "Limpiar todo",
       didactic_intro:
@@ -112,18 +128,30 @@ export const I18N = {
       credits: "Credits",
     },
     main: {
-      bienvenida: "WELCOME TO SORCERER CALCULATOR",
+      bienvenida: "Official Sorcerer TD Calculator",
       home_subtitle:
-        "Cloud-backed data. Free deploy on GitHub Pages or any static host.",
+        "Community tool to calculate values, compare trades, and manage units with live cloud data.",
       list_values_thanks:
-        "Thanks to the Sorcerer TD Value List team for the reference values that power this calculator.",
-      official_list_link: "Official value list spreadsheet (Google Sheets)",
-      home_badge: "Web build",
+        "Reference values provided by the Sorcerer TD Value List team.",
+      official_list_link: "Official value list (Google Sheets)",
+      home_badge: "Official tool",
+      home_tagline: "Values · Trades · Units",
+      home_stat_units: "Units",
+      home_stat_votes: "Votes per unit",
+      home_stat_live: "Live data",
       open: "Open",
-      calc_desc: "Calculate value with multiple votes per unit.",
-      trade_desc: "Compare both offers side by side.",
-      scanner_desc: "Scanning tool — coming soon.",
-      tester_desc: "Scanner testing area with temporary login.",
+      calc_desc: "Sum your inventory value with support for multiple votes per unit.",
+      trade_desc: "Compare two offers and see if the trade is fair.",
+      scanner_desc: "Scan screenshots — coming soon.",
+      tester_desc: "Internal scanner testing area.",
+      sidebar_tagline: "Official calculator",
+    },
+    sort: {
+      label: "Sort",
+      rarity_desc: "Rarity (highest first)",
+      rarity_asc: "Rarity (lowest first)",
+      name: "Name A–Z",
+      value_desc: "Value (highest first)",
     },
     scanner: {
       kicker: "SORCERER CALCULATOR",
@@ -145,6 +173,8 @@ export const I18N = {
       password: "Password",
       login: "Sign in",
       login_error: "Wrong credentials.",
+      ip_denied: "Access restricted. This section is only available from authorized networks.",
+      ip_checking: "Checking access…",
       drop_hint:
         "Upload a screenshot or paste it with Ctrl+V to match unit images.",
       analyze: "Analyze image",
@@ -159,6 +189,7 @@ export const I18N = {
     },
     calc: {
       title: "Value calculator",
+      subtitle: "Select units and adjust votes to get the total value.",
       search: "Search unit…",
       total: "Total value",
       clear_all: "Clear all",
@@ -167,6 +198,7 @@ export const I18N = {
     },
     trade: {
       title: "Trade comparison",
+      subtitle: "Add units to each side and compare the total trade value.",
       search: "Search…",
       clear: "Clear all",
       didactic_intro:
