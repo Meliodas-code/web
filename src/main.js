@@ -21,11 +21,40 @@ let units = [];
 /** @type {Record<string, Record<string, number>>} */
 let vote_values = {};
 
-let lang =
-  typeof localStorage !== "undefined" &&
-  localStorage.getItem("tdhub_lang") === "en"
-    ? "en"
-    : "es";
+const LANG_COOKIE = "tdhub_lang";
+const LANG_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
+
+function getCookie(name) {
+  if (typeof document === "undefined") return null;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function setCookie(name, value, maxAge = LANG_COOKIE_MAX_AGE) {
+  if (typeof document === "undefined") return;
+  const secure =
+    typeof location !== "undefined" && location.protocol === "https:"
+      ? "; Secure"
+      : "";
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax${secure}`;
+}
+
+/** @returns {"es"|"en"} */
+function loadSavedLang() {
+  const fromCookie = getCookie(LANG_COOKIE);
+  if (fromCookie === "en" || fromCookie === "es") return fromCookie;
+  if (typeof localStorage !== "undefined") {
+    const legacy = localStorage.getItem(LANG_COOKIE);
+    if (legacy === "en" || legacy === "es") {
+      setCookie(LANG_COOKIE, legacy);
+      return legacy;
+    }
+  }
+  return "es";
+}
+
+let lang = loadSavedLang();
 
 const calcSelections = Object.create(null);
 const calcLastVote = Object.create(null);
@@ -2458,7 +2487,7 @@ function renderApp() {
 
 function setLang(newLang) {
   lang = newLang;
-  localStorage.setItem("tdhub_lang", newLang);
+  setCookie(LANG_COOKIE, newLang);
   if (voteDialogEl?.open && modalCtx.unit) {
     voteDialogEl.close();
     queueMicrotask(() => openVoteSheet(modalCtx.mode, modalCtx.unit, modalCtx.side));
