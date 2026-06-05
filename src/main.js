@@ -2123,6 +2123,40 @@ function buildTesterView() {
   return wrap;
 }
 
+function buildValuesUnitCell(u, sticky = false) {
+  const cell = document.createElement("td");
+  cell.className = sticky
+    ? "values-sticky-col values-cell-unit"
+    : "values-cell-unit";
+  if (u.imagen) {
+    const img = document.createElement("img");
+    img.className = "values-unit-thumb";
+    img.src = assetUrl(u.imagen);
+    img.alt = "";
+    cell.appendChild(img);
+  }
+  const span = document.createElement("span");
+  span.className = "values-cell-name";
+  span.textContent = unitDisplayName(u);
+  cell.appendChild(span);
+  return cell;
+}
+
+function buildVoteHeaderCell(vn) {
+  const th = document.createElement("th");
+  th.className = "values-vote-head";
+  th.title = voteDisplayLabel(lang, vn);
+  const img = document.createElement("img");
+  img.src = assetUrl(`assets/votos/voto${vn}.png`);
+  img.alt = voteDisplayLabel(lang, vn);
+  img.onerror = () => img.remove();
+  const lbl = document.createElement("span");
+  lbl.textContent = voteDisplayLabel(lang, vn);
+  th.appendChild(img);
+  th.appendChild(lbl);
+  return th;
+}
+
 function buildValuesView() {
   const q = lastSearchValues;
   const wrap = document.createElement("div");
@@ -2165,12 +2199,11 @@ function buildValuesView() {
     unitsSection.appendChild(empty);
   } else {
     const unitsWrap = document.createElement("div");
-    unitsWrap.className = "values-table-wrap";
+    unitsWrap.className = "values-table-wrap values-table-wrap--units";
     const unitsTable = document.createElement("table");
     unitsTable.className = "values-table values-table--units";
     unitsTable.innerHTML = `
       <thead><tr>
-        <th></th>
         <th>${escapeHtml(t(lang, "values.col_unit"))}</th>
         <th>${escapeHtml(t(lang, "values.col_rarity"))}</th>
         <th>${escapeHtml(t(lang, "values.col_base"))}</th>
@@ -2179,24 +2212,13 @@ function buildValuesView() {
     for (const u of filtered) {
       const tr = document.createElement("tr");
       tr.className = cardRarityClass(u.rareza);
-      const imgTd = document.createElement("td");
-      imgTd.className = "values-cell-img";
-      if (u.imagen) {
-        const img = document.createElement("img");
-        img.src = assetUrl(u.imagen);
-        img.alt = "";
-        imgTd.appendChild(img);
-      }
-      const nameTd = document.createElement("td");
-      nameTd.className = "values-cell-name";
-      nameTd.textContent = unitDisplayName(u);
       const rareTd = document.createElement("td");
+      rareTd.className = "values-cell-rarity";
       if (u.rareza) rareTd.appendChild(buildRarityBadge(u.rareza));
       const valTd = document.createElement("td");
       valTd.className = "values-cell-num";
       valTd.textContent = String(u.valor);
-      tr.appendChild(imgTd);
-      tr.appendChild(nameTd);
+      tr.appendChild(buildValuesUnitCell(u));
       tr.appendChild(rareTd);
       tr.appendChild(valTd);
       tbody.appendChild(tr);
@@ -2230,10 +2252,7 @@ function buildValuesView() {
     unitTh.textContent = t(lang, "values.col_unit");
     headRow.appendChild(unitTh);
     for (const vn of VOTE_DISPLAY_ORDER) {
-      const th = document.createElement("th");
-      th.textContent = voteDisplayLabel(lang, vn);
-      th.title = voteDisplayLabel(lang, vn);
-      headRow.appendChild(th);
+      headRow.appendChild(buildVoteHeaderCell(vn));
     }
     voteHead.appendChild(headRow);
     votesTable.appendChild(voteHead);
@@ -2242,14 +2261,16 @@ function buildValuesView() {
     for (const u of filtered) {
       const tr = document.createElement("tr");
       tr.className = cardRarityClass(u.rareza);
-      const nameTd = document.createElement("td");
-      nameTd.className = "values-sticky-col values-cell-name";
-      nameTd.textContent = unitDisplayName(u);
-      tr.appendChild(nameTd);
+      tr.appendChild(buildValuesUnitCell(u, true));
+      const baseVal = Number(u.valor) || 0;
       for (const vn of VOTE_DISPLAY_ORDER) {
         const td = document.createElement("td");
-        td.className = "values-cell-num";
-        td.textContent = String(voteValueForUnit(u, voteKey(vn)));
+        const v = voteValueForUnit(u, voteKey(vn));
+        td.className =
+          v !== baseVal
+            ? "values-cell-num values-cell-num--diff"
+            : "values-cell-num";
+        td.textContent = String(v);
         tr.appendChild(td);
       }
       voteBody.appendChild(tr);
