@@ -61,3 +61,13 @@ export function rarityLabel(lang, raw) {
   const table = LABELS[lang] ?? LABELS.es;
   return table[n] || String(raw || "").trim() || "—";
 }
+
+/** Orden de mayor a menor rareza (para filtros UI). */
+export const RARITY_IDS_DESC = [
+  "aniversary",
+  "ascended grade",
+  "special grade",
+  "mythic",
+  "legendary",
+  "epic",
+];
