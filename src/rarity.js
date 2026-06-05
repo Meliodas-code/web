@@ -35,3 +35,29 @@ export function rarityRank(rarity) {
   const n = normalizeRarity(rarity);
   return ORDER[n] ?? 99;
 }
+
+const LABELS = {
+  es: {
+    epic: "Épico",
+    legendary: "Legendario",
+    mythic: "Mítico",
+    "special grade": "Grado Especial",
+    "ascended grade": "Grado Ascendido",
+    aniversary: "Aniversario",
+  },
+  en: {
+    epic: "Epic",
+    legendary: "Legendary",
+    mythic: "Mythic",
+    "special grade": "Special Grade",
+    "ascended grade": "Ascended Grade",
+    aniversary: "Anniversary",
+  },
+};
+
+/** @param {"es"|"en"} lang */
+export function rarityLabel(lang, raw) {
+  const n = normalizeRarity(raw);
+  const table = LABELS[lang] ?? LABELS.es;
+  return table[n] || String(raw || "").trim() || "—";
+}
