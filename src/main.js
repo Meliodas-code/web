@@ -1,6 +1,11 @@
 import { assetUrl } from "./assetUrl.js";
 import { loadUnitsAndVotes } from "./supabase/loadData.js";
-import { rarityRank, normalizeRarity, rarityLabel } from "./rarity.js";
+import {
+  rarityRank,
+  normalizeRarity,
+  rarityLabel,
+  RARITY_IDS_DESC,
+} from "./rarity.js";
 import { t } from "./strings.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -46,6 +51,14 @@ let unitSortMode =
   )
     ? /** @type {any} */ (localStorage.getItem("tdhub_sort"))
     : "rarity-desc";
+
+/** @type {"all" | string} */
+let tradeRarityFilter =
+  typeof localStorage !== "undefined" &&
+  (localStorage.getItem("tdhub_trade_rarity") === "all" ||
+    RARITY_IDS_DESC.includes(localStorage.getItem("tdhub_trade_rarity") || ""))
+    ? localStorage.getItem("tdhub_trade_rarity") || "all"
+    : "all";
 
 /** Tras escribir en el buscador, re-render quita foco — lo restauramos solo en ese caso. */
 let pendingToolbarFocusRoute = /** @type {null | "calc" | "trade"} */ (null);
@@ -362,10 +375,12 @@ function compareUnits(a, b) {
   return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
 }
 
-function filterSortUnits(q) {
+function getFilteredUnits(q, rarityFilter = "all") {
   const query = (q || "").toLowerCase().trim();
-  const list = [...units].sort(compareUnits);
-
+  let list = [...units].sort(compareUnits);
+  if (rarityFilter && rarityFilter !== "all") {
+    list = list.filter((u) => normalizeRarity(u.rareza) === rarityFilter);
+  }
   if (!query) return list;
   const tokens = query.split(/\s+/).filter(Boolean);
   return list.filter((u) => {
@@ -375,6 +390,10 @@ function filterSortUnits(q) {
       tokens.every((tok) => s.includes(tok));
     return every(n_es) || every(n_en);
   });
+}
+
+function filterSortUnits(q) {
+  return getFilteredUnits(q, "all");
 }
 
 function testerAccessAllowed() {
@@ -442,6 +461,49 @@ function buildSortSelect(route) {
   wrap.appendChild(lbl);
   wrap.appendChild(sel);
   return wrap;
+}
+
+function buildRarityFilterBar() {
+  const bar = document.createElement("div");
+  bar.className = "rarity-filter-bar";
+
+  const lbl = document.createElement("span");
+  lbl.className = "rarity-filter-label";
+  lbl.textContent = t(lang, "filter.rarity_label");
+
+  const chips = document.createElement("div");
+  chips.className = "rarity-filter-chips";
+
+  const allBtn = document.createElement("button");
+  allBtn.type = "button";
+  allBtn.className = `rarity-chip rarity-chip--all${tradeRarityFilter === "all" ? " active" : ""}`;
+  allBtn.textContent = t(lang, "filter.all");
+  allBtn.onclick = () => {
+    tradeRarityFilter = "all";
+    localStorage.setItem("tdhub_trade_rarity", tradeRarityFilter);
+    pendingToolbarFocusRoute = "trade";
+    renderApp();
+  };
+  chips.appendChild(allBtn);
+
+  for (const id of RARITY_IDS_DESC) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    const cls = cardRarityClass(id);
+    btn.className = `rarity-chip ${cls}${tradeRarityFilter === id ? " active" : ""}`.trim();
+    btn.textContent = rarityLabel(lang, id);
+    btn.onclick = () => {
+      tradeRarityFilter = id;
+      localStorage.setItem("tdhub_trade_rarity", tradeRarityFilter);
+      pendingToolbarFocusRoute = "trade";
+      renderApp();
+    };
+    chips.appendChild(btn);
+  }
+
+  bar.appendChild(lbl);
+  bar.appendChild(chips);
+  return bar;
 }
 
 function buildPageHeader(titleKey, subtitleKey) {
@@ -818,98 +880,119 @@ function buildCalcView() {
   return wrap;
 }
 
+function buildTradeUnitCard(u, sideName) {
+  const cmap = sideName === "left" ? tradeLeftCounts : tradeRightCounts;
+  const lmap = sideName === "left" ? tradeLeftLast : tradeRightLast;
+  const sum = tradeSumForUnit(sideName, u.nombre);
+
+  const card = document.createElement("div");
+  card.className = `unit-card trade-unit-card ${cardRarityClass(u.rareza)}`.trim();
+
+  const head = document.createElement("div");
+  head.className = "unit-card-head";
+
+  const vb = document.createElement("button");
+  vb.type = "button";
+  vb.className = "vote-mini";
+  vb.title = t(lang, "calc.reopen");
+  const vbImg = document.createElement("img");
+  vbImg.src = tradeVoteIconSrc(sideName, u.nombre);
+  vbImg.alt = "";
+  vb.appendChild(vbImg);
+  vb.onclick = () => openVoteSheet("trade", u, sideName);
+
+  const badge = document.createElement("span");
+  badge.className = "badge";
+  badge.textContent = String(sum);
+  head.appendChild(vb);
+  head.appendChild(badge);
+
+  const face = document.createElement("img");
+  face.className = "face";
+  face.src = u.imagen ? assetUrl(u.imagen) : "";
+  face.alt = "";
+
+  const meta = document.createElement("div");
+  meta.className = "unit-meta";
+  const name = document.createElement("div");
+  name.className = "unit-name";
+  name.textContent = unitDisplayName(u);
+  meta.appendChild(name);
+
+  const val = document.createElement("div");
+  val.className = "unit-value";
+  val.textContent = String(u.valor);
+
+  const ctl = document.createElement("div");
+  ctl.className = "controls";
+  const bminus = document.createElement("button");
+  bminus.className = "round minus";
+  bminus.type = "button";
+  bminus.textContent = "−";
+  bminus.onclick = () => {
+    const vk = pickActiveVote(cmap, lmap, u.nombre, "voto1");
+    adjustTradeVotes(sideName, u.nombre, vk, -1);
+    renderApp();
+  };
+  const bplus = document.createElement("button");
+  bplus.type = "button";
+  bplus.className = "round plus";
+  bplus.textContent = "+";
+  bplus.onclick = () => {
+    const vk =
+      lmap[u.nombre] || pickActiveVote(cmap, lmap, u.nombre, "voto1");
+    adjustTradeVotes(sideName, u.nombre, vk, 1);
+    renderApp();
+  };
+  ctl.appendChild(bminus);
+  ctl.appendChild(bplus);
+
+  card.appendChild(head);
+  card.appendChild(face);
+  card.appendChild(meta);
+  card.appendChild(val);
+  card.appendChild(ctl);
+  return card;
+}
+
 function buildTradeHalf(sideName, filtered) {
   const col = document.createElement("div");
   col.className = `trade-col ${sideName}`;
+
+  const head = document.createElement("div");
+  head.className = "trade-col-head";
   const h = document.createElement("h3");
   h.textContent =
     sideName === "left" ? t(lang, "trade.left") : t(lang, "trade.right");
-  col.appendChild(h);
-
-  col.appendChild(buildTradeInventory(sideName));
+  const sideTotal = document.createElement("span");
+  sideTotal.className = `trade-side-total trade-side-total--${sideName}`;
+  sideTotal.textContent = String(
+    tradeSideTotal(sideName === "left" ? tradeLeftCounts : tradeRightCounts),
+  );
+  head.appendChild(h);
+  head.appendChild(sideTotal);
+  col.appendChild(head);
 
   const cap = document.createElement("div");
   cap.className = "trade-picker-caption muted";
   cap.textContent = t(lang, "trade.picker_caption");
   col.appendChild(cap);
 
-  const listWrap = document.createElement("div");
-  listWrap.className = "trade-picker";
-  listWrap.dataset.side = sideName;
-
-  const cmap =
-    sideName === "left" ? tradeLeftCounts : tradeRightCounts;
-  const lmap =
-    sideName === "left" ? tradeLeftLast : tradeRightLast;
+  const gridWrap = document.createElement("div");
+  gridWrap.className = "trade-picker trade-unit-grid";
+  gridWrap.dataset.side = sideName;
 
   for (const u of filtered) {
-    const row = document.createElement("div");
-    row.className = `trade-row ${cardRarityClass(u.rareza)}`.trim();
-
-    const face = document.createElement("img");
-    face.className = "face";
-    face.src = u.imagen ? assetUrl(u.imagen) : "";
-
-    const meta = document.createElement("div");
-    meta.className = "trade-meta";
-    const nEl = document.createElement("div");
-    nEl.className = "name";
-    nEl.textContent = unitDisplayName(u);
-    meta.appendChild(nEl);
-    if (u.rareza) meta.appendChild(buildRarityBadge(u.rareza));
-    const vEl = document.createElement("div");
-    vEl.className = "val";
-    vEl.textContent = `${u.valor}`;
-    meta.appendChild(vEl);
-
-    const vt = document.createElement("button");
-    vt.type = "button";
-    vt.className = "vote-mini";
-    const vtImg = document.createElement("img");
-    vtImg.src = tradeVoteIconSrc(sideName, u.nombre);
-    vtImg.alt = "";
-    vt.appendChild(vtImg);
-    vt.onclick = () => openVoteSheet("trade", u, sideName);
-
-    const ctl = document.createElement("div");
-    ctl.className = "controls";
-    const lbl = document.createElement("span");
-    lbl.textContent = String(tradeSumForUnit(sideName, u.nombre));
-    lbl.style.minWidth = "22px";
-    lbl.style.fontWeight = "700";
-    lbl.style.color = "#fff";
-
-    const bminus = document.createElement("button");
-    bminus.type = "button";
-    bminus.className = "round minus";
-    bminus.textContent = "−";
-    bminus.onclick = () => {
-      const vk = pickActiveVote(cmap, lmap, u.nombre, "voto1");
-      adjustTradeVotes(sideName, u.nombre, vk, -1);
-      renderApp();
-    };
-    const bplus = document.createElement("button");
-    bplus.type = "button";
-    bplus.className = "round plus";
-    bplus.textContent = "+";
-    bplus.onclick = () => {
-      const vk =
-        lmap[u.nombre] ||
-        pickActiveVote(cmap, lmap, u.nombre, "voto1");
-      adjustTradeVotes(sideName, u.nombre, vk, 1);
-      renderApp();
-    };
-    ctl.appendChild(bminus);
-    ctl.appendChild(lbl);
-    ctl.appendChild(bplus);
-
-    row.appendChild(face);
-    row.appendChild(meta);
-    row.appendChild(vt);
-    row.appendChild(ctl);
-    listWrap.appendChild(row);
+    gridWrap.appendChild(buildTradeUnitCard(u, sideName));
   }
-  col.appendChild(listWrap);
+  col.appendChild(gridWrap);
+
+  const invCap = document.createElement("div");
+  invCap.className = "trade-inventory-caption muted";
+  invCap.textContent = t(lang, "trade.inventory_caption");
+  col.appendChild(invCap);
+  col.appendChild(buildTradeInventory(sideName));
+
   return col;
 }
 
@@ -949,52 +1032,44 @@ function buildTradeView() {
   };
 
   tb.appendChild(inp);
-  tb.appendChild(buildSortSelect("trade"));
   tb.appendChild(clearBtn);
 
   const leftT = tradeSideTotal(tradeLeftCounts);
   const rightT = tradeSideTotal(tradeRightCounts);
   const diff = Math.abs(leftT - rightT);
 
-  let verdict = `${t(lang, "trade.fair")}`;
-  let vcol = "#facc15";
+  let verdict = t(lang, "trade.fair");
+  let verdictClass = "trade-score--fair";
   if (diff > 50) {
     if (leftT > rightT) {
       verdict = t(lang, "trade.win_left");
-      vcol = "#22c55e";
+      verdictClass = "trade-score--win-left";
     } else {
       verdict = t(lang, "trade.win_right");
-      vcol = "#22c55e";
+      verdictClass = "trade-score--win-right";
     }
   }
 
   const scoreBox = document.createElement("div");
-  scoreBox.className = "trade-score";
+  scoreBox.className = `trade-score ${verdictClass}`;
   const big = document.createElement("div");
   big.className = "big";
-  big.style.color = vcol;
   big.textContent = `${verdict} · ${leftT} vs ${rightT}`;
   const sub = document.createElement("div");
-  sub.className = "muted";
-  sub.style.marginTop = "0.35rem";
+  sub.className = "trade-score-sub muted";
   sub.textContent = `${t(lang, "trade.left_tot")}: ${leftT} · ${t(lang, "trade.right_tot")}: ${rightT} · ${t(lang, "trade.diff")}: ${diff}`;
   scoreBox.appendChild(big);
   scoreBox.appendChild(sub);
 
-  const hint = document.createElement("p");
-  hint.className = "trade-didactic-hint muted";
-  hint.textContent = t(lang, "trade.didactic_intro");
-
   const grid = document.createElement("div");
   grid.className = "trade-shell";
-  const filt = filterSortUnits(q);
-
-  grid.appendChild(buildTradeHalf("left", filt));
-  grid.appendChild(buildTradeHalf("right", filt));
+  const filt = getFilteredUnits(q, tradeRarityFilter);
 
   wrap.appendChild(tb);
   wrap.appendChild(scoreBox);
-  wrap.appendChild(hint);
+  wrap.appendChild(buildRarityFilterBar());
+  grid.appendChild(buildTradeHalf("left", filt));
+  grid.appendChild(buildTradeHalf("right", filt));
   wrap.appendChild(grid);
   return wrap;
 }
