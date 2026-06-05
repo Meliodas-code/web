@@ -7,6 +7,7 @@ import {
   RARITY_IDS_DESC,
 } from "./rarity.js";
 import { t } from "./strings.js";
+import { VOTE_DISPLAY_ORDER, voteKey, voteDisplayLabel } from "./votes.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 /** Lista de valores oficial (Sorcerer TD Value list). */
@@ -2228,9 +2229,10 @@ function buildValuesView() {
     unitTh.className = "values-sticky-col";
     unitTh.textContent = t(lang, "values.col_unit");
     headRow.appendChild(unitTh);
-    for (let i = 1; i <= 13; i++) {
+    for (const vn of VOTE_DISPLAY_ORDER) {
       const th = document.createElement("th");
-      th.textContent = `V${i}`;
+      th.textContent = voteDisplayLabel(lang, vn);
+      th.title = voteDisplayLabel(lang, vn);
       headRow.appendChild(th);
     }
     voteHead.appendChild(headRow);
@@ -2244,10 +2246,10 @@ function buildValuesView() {
       nameTd.className = "values-sticky-col values-cell-name";
       nameTd.textContent = unitDisplayName(u);
       tr.appendChild(nameTd);
-      for (let i = 1; i <= 13; i++) {
+      for (const vn of VOTE_DISPLAY_ORDER) {
         const td = document.createElement("td");
         td.className = "values-cell-num";
-        td.textContent = String(voteValueForUnit(u, `voto${i}`));
+        td.textContent = String(voteValueForUnit(u, voteKey(vn)));
         tr.appendChild(td);
       }
       voteBody.appendChild(tr);
