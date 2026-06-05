@@ -1522,73 +1522,56 @@ main.content {
 
 .trade-unit-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 86px);
-  gap: 0.4rem;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 0.65rem;
   align-content: start;
   align-items: start;
-  justify-content: start;
 }
 
 .trade-unit-card {
-  width: 86px;
   align-self: start;
-  padding: 0.28rem 0.26rem 0.32rem;
+  height: auto;
+  padding: 0.45rem 0.42rem 0.5rem;
 }
 
 .trade-unit-card .unit-card-head {
-  margin-bottom: 0.1rem;
+  margin-bottom: 0.2rem;
 }
 
 .trade-unit-card .vote-mini {
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
 }
 
 .trade-unit-card .face {
-  width: 100%;
-  height: 34px;
-  max-height: 34px;
+  width: 64px;
+  height: 56px;
+  max-height: 56px;
   object-fit: contain;
-  margin: 0 auto;
+  align-self: center;
+  margin: 0.2rem auto;
   display: block;
-}
-
-.trade-unit-card .unit-meta {
-  min-height: 0;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.4));
 }
 
 .trade-unit-card .unit-name {
-  font-size: 0.58rem;
-  line-height: 1.15;
+  font-size: 0.74rem;
+  line-height: 1.25;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-height: 0;
-  max-height: 2.3em;
 }
 
 .trade-unit-card .unit-value {
-  font-size: 0.6rem;
-  margin: 0.02rem 0 0.1rem;
-  line-height: 1.1;
-}
-
-.trade-unit-card .controls {
-  gap: 0.25rem;
-  margin-top: 0.05rem;
+  font-size: 0.74rem;
+  margin: 0.1rem 0 0.3rem;
 }
 
 .trade-unit-card .controls button {
-  width: 24px;
-  height: 24px;
-  font-size: 0.82rem;
-}
-
-.trade-unit-card .badge {
-  font-size: 0.6rem;
-  min-width: 1.1rem;
-  padding: 0.06rem 0.25rem;
+  width: 30px;
+  height: 30px;
 }
 
 .trade-col.left .trade-col-head h3 {
@@ -1792,24 +1775,24 @@ main.content {
 }
 
 .values-table {
+  width: 100%;
   border-collapse: collapse;
-  font-size: 0.8rem;
+  font-size: 0.84rem;
+  table-layout: auto;
 }
 
 .values-table--units {
-  width: auto;
-  min-width: min(100%, 520px);
   max-width: 100%;
 }
 
 .values-table--votes {
   width: max-content;
-  max-width: 100%;
+  min-width: 100%;
 }
 
 .values-table th,
 .values-table td {
-  padding: 0.32rem 0.42rem;
+  padding: 0.45rem 0.55rem;
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
@@ -1820,10 +1803,11 @@ main.content {
   top: 0;
   z-index: 2;
   background: #16161e;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .values-table tbody tr:hover {
@@ -1854,31 +1838,37 @@ main.content {
   border-left: 3px solid rgba(244, 114, 182, 0.55);
 }
 
-.values-cell-img {
-  width: 36px;
-  padding: 0.25rem !important;
+.values-table--units .values-cell-img {
+  width: 52px;
+  padding: 0.35rem 0.4rem !important;
 }
 
 .values-cell-img img {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   display: block;
 }
 
 .values-table--units .values-cell-name {
   font-weight: 700;
-  max-width: 14rem;
-}
-
-.values-table--units td:nth-child(3) {
-  width: 1%;
   white-space: nowrap;
 }
 
-.values-table--units td:nth-child(4) {
-  width: 1%;
-  white-space: nowrap;
+.values-table--units thead th:nth-child(1),
+.values-table--units tbody td:nth-child(1) {
+  width: 52px;
+}
+
+.values-table--units thead th:nth-child(3),
+.values-table--units tbody td:nth-child(3) {
+  width: 10rem;
+}
+
+.values-table--units thead th:nth-child(4),
+.values-table--units tbody td:nth-child(4) {
+  width: 6rem;
+  text-align: right !important;
 }
 
 .values-cell-name {
@@ -1892,38 +1882,35 @@ main.content {
   color: var(--accent2);
   text-align: right !important;
   white-space: nowrap;
-  padding-left: 0.35rem !important;
-  padding-right: 0.35rem !important;
+}
+
+.values-table--votes .values-cell-name {
+  text-align: left !important;
 }
 
 .values-table--votes th:not(:first-child),
 .values-table--votes td:not(:first-child) {
   text-align: center !important;
-  width: 1%;
-  min-width: 0;
-  max-width: 4.8rem;
-  font-size: 0.72rem;
-  line-height: 1.2;
-  padding-left: 0.28rem !important;
-  padding-right: 0.28rem !important;
-  white-space: normal;
-  word-break: break-word;
-  hyphens: auto;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  font-size: 0.8rem;
 }
 
 .values-table--votes thead th:not(:first-child) {
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   font-weight: 700;
   text-transform: none;
   letter-spacing: 0;
+  line-height: 1.2;
   vertical-align: bottom;
-  padding-top: 0.4rem;
-  padding-bottom: 0.4rem;
 }
 
 .values-table--votes .values-sticky-col {
-  max-width: 9.5rem;
-  min-width: 6.5rem;
+  min-width: 7.5rem;
+  max-width: 11rem;
 }
 
 .values-sticky-col {
