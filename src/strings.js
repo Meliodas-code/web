@@ -36,6 +36,10 @@ export const I18N = {
       name: "Nombre A–Z",
       value_desc: "Valor (mayor primero)",
     },
+    filter: {
+      rarity_label: "Rareza",
+      all: "Todas",
+    },
     scanner: {
       kicker: "SORCERER CALCULATOR",
       title: "Scanner",
@@ -90,7 +94,8 @@ export const I18N = {
       stock_opponent: "Inventario del rival",
       stock_empty:
         "",
-      picker_caption: "Unidades disponibles · + / −",
+      picker_caption: "Unidades disponibles",
+      inventory_caption: "Inventario del trade",
       left: "Tu oferta",
       right: "Oferta rival",
       left_tot: "Total izquierda",
@@ -153,6 +158,10 @@ export const I18N = {
       name: "Name A–Z",
       value_desc: "Value (highest first)",
     },
+    filter: {
+      rarity_label: "Rarity",
+      all: "All",
+    },
     scanner: {
       kicker: "SORCERER CALCULATOR",
       title: "Scanner",
@@ -207,7 +216,8 @@ export const I18N = {
       stock_opponent: "Opponent’s inventory",
       stock_empty:
         "",
-      picker_caption: "Available units · + / −",
+      picker_caption: "Available units",
+      inventory_caption: "Trade inventory",
       left: "Your offer",
       right: "Opponent offer",
       left_tot: "Left total",
