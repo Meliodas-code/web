@@ -1569,9 +1569,16 @@ main.content {
   margin: 0.1rem 0 0.3rem;
 }
 
+.trade-unit-card .controls {
+  gap: 0.4rem;
+  justify-content: center;
+}
+
 .trade-unit-card .controls button {
-  width: 30px;
-  height: 30px;
+  width: 38px;
+  height: 34px;
+  font-size: 1.05rem;
+  border-radius: 9px;
 }
 
 .trade-col.left .trade-col-head h3 {
@@ -1770,19 +1777,23 @@ main.content {
   box-shadow: var(--shadow-card);
 }
 
+.values-table-wrap--units {
+  display: inline-block;
+  max-width: 100%;
+}
+
 .values-table-wrap--wide {
   max-height: min(62vh, 640px);
 }
 
 .values-table {
-  width: 100%;
   border-collapse: collapse;
   font-size: 0.84rem;
-  table-layout: auto;
 }
 
 .values-table--units {
-  max-width: 100%;
+  width: auto;
+  min-width: min(100%, 680px);
 }
 
 .values-table--votes {
@@ -1792,7 +1803,7 @@ main.content {
 
 .values-table th,
 .values-table td {
-  padding: 0.45rem 0.55rem;
+  padding: 0.5rem 0.65rem;
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
@@ -1810,8 +1821,57 @@ main.content {
   white-space: nowrap;
 }
 
+.values-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.025);
+}
+
 .values-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(43, 140, 221, 0.07);
+}
+
+.values-cell-unit {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  white-space: nowrap;
+}
+
+.values-unit-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+}
+
+.values-cell-rarity {
+  white-space: nowrap;
+}
+
+.values-vote-head {
+  text-align: center !important;
+  vertical-align: bottom;
+  padding: 0.4rem 0.45rem !important;
+  min-width: 4.2rem;
+}
+
+.values-vote-head img {
+  display: block;
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  margin: 0 auto 0.3rem;
+}
+
+.values-vote-head span {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-soft);
+  max-width: 5.5rem;
+  margin: 0 auto;
+  white-space: normal;
 }
 
 .values-table tbody tr.epic {
@@ -1838,79 +1898,48 @@ main.content {
   border-left: 3px solid rgba(244, 114, 182, 0.55);
 }
 
-.values-table--units .values-cell-img {
-  width: 52px;
-  padding: 0.35rem 0.4rem !important;
-}
-
-.values-cell-img img {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-  display: block;
-}
-
-.values-table--units .values-cell-name {
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.values-table--units thead th:nth-child(1),
-.values-table--units tbody td:nth-child(1) {
-  width: 52px;
-}
-
-.values-table--units thead th:nth-child(3),
-.values-table--units tbody td:nth-child(3) {
-  width: 10rem;
-}
-
-.values-table--units thead th:nth-child(4),
-.values-table--units tbody td:nth-child(4) {
-  width: 6rem;
+.values-table--units thead th:last-child,
+.values-table--units tbody td.values-cell-num {
   text-align: right !important;
 }
 
 .values-cell-name {
   font-weight: 700;
-  white-space: nowrap;
 }
 
 .values-cell-num {
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  color: var(--accent2);
-  text-align: right !important;
+  font-weight: 600;
+  color: rgba(167, 243, 208, 0.88);
+  text-align: center !important;
   white-space: nowrap;
+  font-size: 0.82rem;
 }
 
-.values-table--votes .values-cell-name {
-  text-align: left !important;
+.values-table--units .values-cell-num {
+  text-align: right !important;
+  font-weight: 700;
+  color: var(--accent2);
+  font-size: 0.88rem;
+}
+
+.values-cell-num--diff {
+  font-weight: 800;
+  color: #6ee7b7;
+  background: rgba(52, 211, 153, 0.08);
 }
 
 .values-table--votes th:not(:first-child),
 .values-table--votes td:not(:first-child) {
   text-align: center !important;
   white-space: nowrap;
-  word-break: keep-all;
-  overflow-wrap: normal;
-  padding-left: 0.5rem !important;
-  padding-right: 0.5rem !important;
-  font-size: 0.8rem;
-}
-
-.values-table--votes thead th:not(:first-child) {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: none;
-  letter-spacing: 0;
-  line-height: 1.2;
-  vertical-align: bottom;
+  padding-left: 0.45rem !important;
+  padding-right: 0.45rem !important;
 }
 
 .values-table--votes .values-sticky-col {
-  min-width: 7.5rem;
-  max-width: 11rem;
+  min-width: 10rem;
+  max-width: 14rem;
 }
 
 .values-sticky-col {
