@@ -214,6 +214,57 @@ export function predictionSummary(rows) {
   return { up, down, stable, total: rows.length };
 }
 
+/** @typedef {"score"|"rarity"|"delta"|"value"|"name"} PredictionSortId */
+
+/**
+ * @param {ReturnType<typeof buildPredictions>} rows
+ * @param {PredictionSortId} sortBy
+ */
+export function sortPredictionRows(rows, sortBy) {
+  const copy = [...rows];
+  if (sortBy === "rarity") {
+    copy.sort((a, b) => {
+      const ra = rarityRank(a.unit.rareza);
+      const rb = rarityRank(b.unit.rareza);
+      if (ra !== rb) return rb - ra;
+      if (b.score !== a.score) return b.score - a.score;
+      return Math.abs(b.base.delta) - Math.abs(a.base.delta);
+    });
+  } else if (sortBy === "delta") {
+    copy.sort(
+      (a, b) =>
+        Math.abs(b.base.delta) - Math.abs(a.base.delta) ||
+        b.score - a.score,
+    );
+  } else if (sortBy === "value") {
+    copy.sort((a, b) => b.base.current - a.base.current || b.score - a.score);
+  } else if (sortBy === "name") {
+    copy.sort((a, b) =>
+      a.unit.nombre.localeCompare(b.unit.nombre, "es", { sensitivity: "base" }),
+    );
+  }
+  return copy;
+}
+
+/**
+ * Tendencias agregadas por tier de rareza.
+ * @param {ReturnType<typeof buildPredictions>} rows
+ */
+export function buildRarityBreakdown(rows) {
+  /** @type {Record<string, { up: number, stable: number, down: number, total: number }>} */
+  const out = {};
+  for (const row of rows) {
+    const r = normalizeRarity(row.unit.rareza) || "other";
+    if (!out[r]) out[r] = { up: 0, stable: 0, down: 0, total: 0 };
+    out[r].total++;
+    const t = row.base.trend;
+    if (t === "up" || t === "forecast_up") out[r].up++;
+    else if (t === "down" || t === "forecast_down") out[r].down++;
+    else out[r].stable++;
+  }
+  return out;
+}
+
 export function historySnapshotCount() {
   return loadHistory().length;
 }
