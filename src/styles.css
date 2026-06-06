@@ -1744,6 +1744,150 @@ main.content {
   color: #4ade80;
 }
 
+.trade-compare {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.trade-compare-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.trade-compare-side--left {
+  color: var(--accent);
+}
+
+.trade-compare-side--right {
+  color: var(--accent2);
+}
+
+.trade-compare-track {
+  display: flex;
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.trade-compare-fill {
+  width: 0;
+  height: 100%;
+  transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: tradeBarGrow 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.trade-compare-fill--left {
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+.trade-compare-fill--right {
+  background: linear-gradient(90deg, #22a06b, var(--accent2));
+  box-shadow: 0 0 12px var(--accent2-glow);
+}
+
+@keyframes tradeBarGrow {
+  from {
+    opacity: 0.35;
+    filter: brightness(0.85);
+  }
+  to {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+.trade-compare-diff {
+  margin-top: 0.45rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+#app.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  animation: appLoadingIn 0.4s ease both;
+}
+
+#app.app-loading .app-loading-text {
+  padding: 24px;
+  text-align: center;
+  animation: appLoadingPulse 1.2s ease-in-out infinite;
+}
+
+#app.app-ready {
+  animation: appReadyFade 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app-shell--enter {
+  animation: appShellEnter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.content--enter {
+  animation: contentEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}
+
+@keyframes appLoadingIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes appLoadingPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes appReadyFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes appShellEnter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes contentEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .values-section {
   margin-bottom: 1.5rem;
 }
