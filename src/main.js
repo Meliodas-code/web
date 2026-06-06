@@ -8,7 +8,7 @@ import {
 } from "./rarity.js";
 import { t } from "./strings.js";
 import { VOTE_DISPLAY_ORDER, voteKey, voteDisplayLabel } from "./votes.js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { callEdgeFunction, edgeFunctionsConfigured } from "./edgeApi.js";
 
 /** Lista de valores oficial (Sorcerer TD Value list). */
 const OFFICIAL_VALUE_LIST_URL =
@@ -112,21 +112,13 @@ const TD_MOBILE_MQ =
     ? window.matchMedia("(max-width: 640px)")
     : null;
 
-const TESTER_ALLOWED_IPS = String(import.meta.env.VITE_TESTER_ALLOWED_IPS || "")
-  .split(",")
-  .map((ip) => ip.trim())
-  .filter(Boolean);
-
 let testerIpStatus = /** @type {"pending" | "allowed" | "denied"} */ ("pending");
-let testerClientIp = "";
 const SCANNER_VECTOR_SIZE = 40;
 // Umbral ajustado: demasiada dureza => 0 detecciones.
 // Se compensa con filtro por "gap" y supresión de solapamientos.
 const SCANNER_MATCH_THRESHOLD = 0.70;
-const p1 = "AIzaSyAvyTL"; 
-const p2 = "nMFYN8E92ijisr"; 
-const p3 = "5dDFpyQS__EmnA"; 
-const GEMINI_KEY = p1 + p2 + p3;
+let appBootstrapped = false;
+let hasPlayedEnterAnim = false;
 const CREDITS_PROFILES = [
   {
     roleKey: "credits.role_creator",
@@ -428,26 +420,18 @@ function filterSortUnits(q) {
 }
 
 function testerAccessAllowed() {
-  if (!TESTER_ALLOWED_IPS.length) return false;
   return testerIpStatus === "allowed";
 }
 
 async function resolveTesterIpAccess() {
-  if (!TESTER_ALLOWED_IPS.length) {
+  if (!edgeFunctionsConfigured()) {
     testerIpStatus = "denied";
     return;
   }
   testerIpStatus = "pending";
   try {
-    const res = await fetch("https://api.ipify.org?format=json", {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("ip fetch failed");
-    const data = await res.json();
-    testerClientIp = String(data?.ip || "").trim();
-    testerIpStatus = TESTER_ALLOWED_IPS.includes(testerClientIp)
-      ? "allowed"
-      : "denied";
+    const data = await callEdgeFunction("tester-access", { method: "GET" });
+    testerIpStatus = data?.allowed ? "allowed" : "denied";
   } catch {
     testerIpStatus = "denied";
   }
@@ -1079,6 +1063,7 @@ function buildTradeView() {
   sub.textContent = `${t(lang, "trade.left_tot")}: ${leftT} · ${t(lang, "trade.right_tot")}: ${rightT} · ${t(lang, "trade.diff")}: ${diff}`;
   scoreBox.appendChild(big);
   scoreBox.appendChild(sub);
+  scoreBox.appendChild(buildTradeCompareBar(leftT, rightT, diff));
 
   const grid = document.createElement("div");
   grid.className = "trade-shell";
@@ -1090,6 +1075,60 @@ function buildTradeView() {
   grid.appendChild(buildTradeHalf("left", filt));
   grid.appendChild(buildTradeHalf("right", filt));
   wrap.appendChild(grid);
+  return wrap;
+}
+
+function buildTradeCompareBar(leftT, rightT, diff) {
+  const total = leftT + rightT;
+  const leftPct = total > 0 ? (leftT / total) * 100 : 50;
+  const rightPct = total > 0 ? (rightT / total) * 100 : 50;
+
+  const wrap = document.createElement("div");
+  wrap.className = "trade-compare";
+
+  const labels = document.createElement("div");
+  labels.className = "trade-compare-labels";
+
+  const leftLbl = document.createElement("span");
+  leftLbl.className = "trade-compare-side trade-compare-side--left";
+  leftLbl.textContent = `${t(lang, "trade.left_short")}: ${leftT}`;
+
+  const rightLbl = document.createElement("span");
+  rightLbl.className = "trade-compare-side trade-compare-side--right";
+  rightLbl.textContent = `${t(lang, "trade.right_short")}: ${rightT}`;
+
+  labels.appendChild(leftLbl);
+  labels.appendChild(rightLbl);
+
+  const track = document.createElement("div");
+  track.className = "trade-compare-track";
+  track.setAttribute("role", "img");
+  track.setAttribute(
+    "aria-label",
+    `${t(lang, "trade.left_tot")} ${leftT}, ${t(lang, "trade.right_tot")} ${rightT}, ${t(lang, "trade.diff")} ${diff}`,
+  );
+
+  const leftFill = document.createElement("div");
+  leftFill.className = "trade-compare-fill trade-compare-fill--left";
+  leftFill.style.width = `${leftPct}%`;
+
+  const rightFill = document.createElement("div");
+  rightFill.className = "trade-compare-fill trade-compare-fill--right";
+  rightFill.style.width = `${rightPct}%`;
+
+  track.appendChild(leftFill);
+  track.appendChild(rightFill);
+
+  const diffRow = document.createElement("div");
+  diffRow.className = "trade-compare-diff muted";
+  diffRow.textContent =
+    total > 0
+      ? `${t(lang, "trade.diff")}: ${diff}`
+      : t(lang, "trade.bar_empty");
+
+  wrap.appendChild(labels);
+  wrap.appendChild(track);
+  wrap.appendChild(diffRow);
   return wrap;
 }
 
@@ -1339,64 +1378,29 @@ function pickUnitFromLookup(lookup, rawName) {
   return null;
 }
 async function scanWithGemini(base64Image, candidates, maxCount = 6) {
+  if (!edgeFunctionsConfigured()) {
+    throw new Error("Scanner no configurado (falta Supabase en .env).");
+  }
+
   try {
-    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-    
-    // Usamos el modelo 1.5 que es el que tiene "ojos" para los detalles
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash-latest",
-      generationConfig: {
-        maxOutputTokens: 2048,
-        temperature: 0, 
-        responseMimeType: "application/json" 
-      }
-    });
-
-    const imageData = base64Image.split(",")[1];
     const pool = Array.isArray(candidates) && candidates.length ? candidates : units;
-    const namesList = pool.map(u => u.nombre).filter(Boolean).join(", ");
+    const namesList = pool.map((u) => u.nombre).filter(Boolean);
 
-    const prompt = `ACTÚA COMO UN EXPERTO EN RECONOCIMIENTO VISUAL.
-TU TAREA: Escanear las cartas de personajes en la imagen adjunta.
-
-REGLAS CRÍTICAS:
-1. SOLO identifica unidades que estén EN LA IMAGEN.
-2. Compara el físico (pelo, ropa, postura) con esta lista: [${namesList}]
-3. Si hay varias unidades iguales, cuéntalas todas (qty).
-4. VOTOS (Icono circular): Identifícalo por color (Rojo, Azul, Verde, etc.) y asígnale el ID "votoX" correspondiente.
-
-RESPUESTA (SOLO JSON):
-{"found": [{"name": "Nombre exacto", "vote": "votoX", "qty": 1}]}`;
-
-    // CAMBIO VITAL: Estructura de "parts" explícita
-    const result = await model.generateContent({
-      contents: [{
-        role: 'user',
-        parts: [
-          {
-            inlineData: {
-              mimeType: "image/png",
-              data: imageData
-            }
-          },
-          {
-            text: prompt
-          }
-        ]
-      }]
+    const data = await callEdgeFunction("gemini-scan", {
+      body: {
+        image: base64Image,
+        namesList,
+        maxCount,
+      },
     });
 
-    const response = await result.response;
-    const text = response.text().trim();
-    
-    // Esto te ayudará a ver en la consola si la IA está diciendo tonterías antes de fallar
-    console.log("Respuesta cruda de Gemini:", text);
+    const text = String(data?.text || "").trim();
+    if (!text) throw new Error("Respuesta vacía del servidor.");
 
     return parseGeminiJson(text);
-
   } catch (error) {
-    console.error("Error real en el envío a Gemini:", error);
-    throw new Error("Fallo en el escaneo: " + error.message);
+    console.error("Error en el escaneo remoto:", error);
+    throw new Error("Fallo en el escaneo: " + (error?.message || String(error)));
   }
 }
 function scannerImageFromSrc(src) {
@@ -2406,7 +2410,9 @@ function renderApp() {
   root.innerHTML = "";
 
   const shell = document.createElement("div");
-  shell.className = "app-shell";
+  const playEnter = appBootstrapped && !hasPlayedEnterAnim;
+  shell.className = playEnter ? "app-shell app-shell--enter" : "app-shell";
+  if (playEnter) hasPlayedEnterAnim = true;
 
   const side = document.createElement("aside");
   side.className = "sidebar";
@@ -2457,7 +2463,7 @@ function renderApp() {
   side.appendChild(langRow);
 
   const main = document.createElement("main");
-  main.className = "content";
+  main.className = playEnter ? "content content--enter" : "content";
 
   let route = currentRoute();
   if (route === "tester" && !testerAccessAllowed()) {
@@ -2497,12 +2503,14 @@ function setLang(newLang) {
 
 async function bootstrap() {
   const root = document.getElementById("app");
-  root.innerHTML = `<p class="muted" style="padding:24px;text-align:center">Cargando datos…</p>`;
+  root.className = "app-loading";
+  root.innerHTML = `<p class="muted app-loading-text">Cargando datos…</p>`;
   try {
     const loaded = await loadUnitsAndVotes();
     units = loaded.units;
     vote_values = loaded.vote_values;
   } catch (e) {
+    root.className = "";
     root.style.overflowY = "auto";
     root.innerHTML = "";
     const b = document.createElement("div");
@@ -2515,6 +2523,8 @@ async function bootstrap() {
   }
 
   syncTdMobileAttr();
+  root.className = "app-ready";
+  appBootstrapped = true;
   renderApp();
   resolveTesterIpAccess().then(() => renderApp());
 
