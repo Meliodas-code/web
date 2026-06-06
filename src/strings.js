@@ -179,6 +179,18 @@ export const I18N = {
       tip_hold: "Podría compensarse pronto — considera holdear.",
       tip_stable: "Sin cambios recientes detectados.",
       tip_caution: "Valor alto vs su tier — cuidado al tradear ahora.",
+      sort_label: "Ordenar por",
+      sort_score: "Señal (recomendado)",
+      sort_rarity: "Rareza (agrupado)",
+      sort_delta: "Mayor cambio",
+      sort_value: "Valor base",
+      sort_name: "Nombre A–Z",
+      chart_units: "unidades",
+      chart_by_rarity: "Tendencias por rareza",
+      chart_no_data: "Sin datos suficientes.",
+      score_hint: "Puntuación compuesta: subidas/bajadas + votos.",
+      showing_count: "Mostrando {shown} de {total} unidades",
+      section_count: "{count} unidades",
     },
     credits: {
       title: "CRÉDITOS",
@@ -372,6 +384,18 @@ export const I18N = {
       tip_hold: "May catch up soon — consider holding.",
       tip_stable: "No recent changes detected.",
       tip_caution: "High value for its tier — trade carefully.",
+      sort_label: "Sort by",
+      sort_score: "Signal (recommended)",
+      sort_rarity: "Rarity (grouped)",
+      sort_delta: "Largest change",
+      sort_value: "Base value",
+      sort_name: "Name A–Z",
+      chart_units: "units",
+      chart_by_rarity: "Trends by rarity",
+      chart_no_data: "Not enough data yet.",
+      score_hint: "Composite score from trends and votes.",
+      showing_count: "Showing {shown} of {total} units",
+      section_count: "{count} units",
     },
     credits: {
       title: "CREDITS",
@@ -389,9 +413,15 @@ export const I18N = {
   },
 };
 
-export function t(lang, path) {
+export function t(lang, path, vars) {
   const parts = path.split(".");
   let cur = I18N[lang] ?? I18N.es;
   for (const p of parts) cur = cur?.[p];
-  return typeof cur === "string" ? cur : path;
+  let s = typeof cur === "string" ? cur : path;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      s = s.replaceAll(`{${k}}`, String(v));
+    }
+  }
+  return s;
 }
