@@ -67,6 +67,7 @@ const tradeLeftCounts = Object.create(null);
 const tradeRightCounts = Object.create(null);
 const tradeLeftLast = Object.create(null);
 const tradeRightLast = Object.create(null);
+let lastTradeBarFlex = { left: 1, right: 1 };
 
 /** @type {HTMLDialogElement | null} */
 let voteDialogEl = null;
@@ -1032,6 +1033,7 @@ function buildTradeView() {
     for (const k of Object.keys(tradeRightCounts)) delete tradeRightCounts[k];
     for (const k of Object.keys(tradeLeftLast)) delete tradeLeftLast[k];
     for (const k of Object.keys(tradeRightLast)) delete tradeRightLast[k];
+    lastTradeBarFlex = { left: 1, right: 1 };
     renderApp();
   };
 
@@ -1117,18 +1119,24 @@ function buildTradeCompareBar(leftT, rightT, diff) {
 
   const leftFill = document.createElement("div");
   leftFill.className = "trade-balance-fill trade-balance-fill--you";
-  leftFill.style.flex = String(leftFlex);
+  leftFill.style.flex = String(lastTradeBarFlex.left);
 
   const notch = document.createElement("div");
   notch.className = "trade-balance-notch";
 
   const rightFill = document.createElement("div");
   rightFill.className = "trade-balance-fill trade-balance-fill--them";
-  rightFill.style.flex = String(rightFlex);
+  rightFill.style.flex = String(lastTradeBarFlex.right);
 
   meter.appendChild(leftFill);
   meter.appendChild(notch);
   meter.appendChild(rightFill);
+
+  requestAnimationFrame(() => {
+    leftFill.style.flex = String(leftFlex);
+    rightFill.style.flex = String(rightFlex);
+    lastTradeBarFlex = { left: leftFlex, right: rightFlex };
+  });
 
   const meta = document.createElement("div");
   meta.className = "trade-balance-meta";
@@ -1658,6 +1666,70 @@ function buildVoteHeaderCell(vn) {
   return th;
 }
 
+function buildValuesRarityColumn(rarityId, rarityUnits) {
+  const col = document.createElement("div");
+  col.className = `values-rarity-col ${cardRarityClass(rarityId)}`;
+
+  const head = document.createElement("div");
+  head.className = "values-rarity-col-head";
+  head.appendChild(buildRarityBadge(rarityId));
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "values-rarity-col-body";
+  const table = document.createElement("table");
+  table.className = "values-table values-table--units-compact";
+  table.innerHTML = `
+    <thead><tr>
+      <th>${escapeHtml(t(lang, "values.col_unit"))}</th>
+      <th>${escapeHtml(t(lang, "values.col_base"))}</th>
+    </tr></thead>`;
+
+  const tbody = document.createElement("tbody");
+  for (const u of rarityUnits) {
+    const tr = document.createElement("tr");
+    tr.className = cardRarityClass(u.rareza);
+    const valTd = document.createElement("td");
+    valTd.className = "values-cell-num";
+    valTd.textContent = String(u.valor);
+    tr.appendChild(buildValuesUnitCell(u));
+    tr.appendChild(valTd);
+    tbody.appendChild(tr);
+  }
+
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  col.appendChild(head);
+  col.appendChild(tableWrap);
+  return col;
+}
+
+function buildValuesUnitsGrid(filtered) {
+  const grid = document.createElement("div");
+  grid.className = "values-rarity-grid";
+
+  /** @type {Map<string, typeof filtered>} */
+  const byRarity = new Map();
+  for (const u of filtered) {
+    const key = normalizeRarity(u.rareza) || "other";
+    if (!byRarity.has(key)) byRarity.set(key, []);
+    byRarity.get(key).push(u);
+  }
+
+  const order = [
+    ...RARITY_IDS_DESC.filter((id) => byRarity.has(id)),
+    ...[...byRarity.keys()].filter((id) => !RARITY_IDS_DESC.includes(id)),
+  ];
+
+  for (const rarityId of order) {
+    const list = byRarity.get(rarityId);
+    if (!list?.length) continue;
+    list.sort(compareUnits);
+    grid.appendChild(buildValuesRarityColumn(rarityId, list));
+  }
+
+  return grid;
+}
+
 function buildValuesView() {
   const q = lastSearchValues;
   const wrap = document.createElement("div");
@@ -1699,34 +1771,7 @@ function buildValuesView() {
     empty.textContent = t(lang, "values.no_results");
     unitsSection.appendChild(empty);
   } else {
-    const unitsWrap = document.createElement("div");
-    unitsWrap.className = "values-table-wrap values-table-wrap--units";
-    const unitsTable = document.createElement("table");
-    unitsTable.className = "values-table values-table--units";
-    unitsTable.innerHTML = `
-      <thead><tr>
-        <th>${escapeHtml(t(lang, "values.col_unit"))}</th>
-        <th>${escapeHtml(t(lang, "values.col_rarity"))}</th>
-        <th>${escapeHtml(t(lang, "values.col_base"))}</th>
-      </tr></thead>`;
-    const tbody = document.createElement("tbody");
-    for (const u of filtered) {
-      const tr = document.createElement("tr");
-      tr.className = cardRarityClass(u.rareza);
-      const rareTd = document.createElement("td");
-      rareTd.className = "values-cell-rarity";
-      if (u.rareza) rareTd.appendChild(buildRarityBadge(u.rareza));
-      const valTd = document.createElement("td");
-      valTd.className = "values-cell-num";
-      valTd.textContent = String(u.valor);
-      tr.appendChild(buildValuesUnitCell(u));
-      tr.appendChild(rareTd);
-      tr.appendChild(valTd);
-      tbody.appendChild(tr);
-    }
-    unitsTable.appendChild(tbody);
-    unitsWrap.appendChild(unitsTable);
-    unitsSection.appendChild(unitsWrap);
+    unitsSection.appendChild(buildValuesUnitsGrid(filtered));
   }
   wrap.appendChild(unitsSection);
 
