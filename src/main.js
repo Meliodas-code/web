@@ -18,6 +18,8 @@ import {
   buildPredictions,
   predictionSummary,
   historySnapshotCount,
+  sortPredictionRows,
+  buildRarityBreakdown,
 } from "./predictions.js";
 
 /** Lista de valores oficial (Sorcerer TD Value list). */
@@ -35,6 +37,18 @@ let valueHistory = [];
 let predictionsFilter =
   typeof localStorage !== "undefined"
     ? localStorage.getItem("tdhub_pred_filter") || "all"
+    : "all";
+
+/** @type {"score"|"rarity"|"delta"|"value"|"name"} */
+let predictionsSort =
+  typeof localStorage !== "undefined"
+    ? localStorage.getItem("tdhub_pred_sort") || "score"
+    : "score";
+
+/** @type {"all" | string} */
+let predictionsRarityFilter =
+  typeof localStorage !== "undefined"
+    ? readRarityFilter("tdhub_pred_rarity")
     : "all";
 
 const LANG_COOKIE = "tdhub_lang";
@@ -1855,31 +1869,71 @@ function predictionTrendLabel(trend) {
 }
 
 function buildPredictionSparkline(points) {
-  const width = 96;
-  const height = 34;
+  const width = 112;
+  const height = 40;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.setAttribute("class", "pred-sparkline");
   if (!points.length) return svg;
+
   const min = Math.min(...points);
   const max = Math.max(...points);
   const range = max - min || 1;
-  const coords = points
-    .map((v, i) => {
-      const x = (i / Math.max(1, points.length - 1)) * width;
-      const y = height - ((v - min) / range) * (height - 6) - 3;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+  const coords = points.map((v, i) => {
+    const x = (i / Math.max(1, points.length - 1)) * width;
+    const y = height - ((v - min) / range) * (height - 8) - 4;
+    return { x, y, v };
+  });
+
   const trend = points[points.length - 1] >= points[0] ? "up" : "down";
   svg.classList.add(`pred-sparkline--${trend}`);
+  svg.title = points.map((v, i) => `#${i + 1}: ${v}`).join(" → ");
+
+  const polyStr = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" ");
+  const areaStr = `0,${height} ${polyStr} ${width},${height}`;
+
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  const grad = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+  grad.setAttribute("id", `pred-spark-grad-${trend}-${Math.random().toString(36).slice(2, 7)}`);
+  grad.setAttribute("x1", "0");
+  grad.setAttribute("y1", "0");
+  grad.setAttribute("x2", "0");
+  grad.setAttribute("y2", "1");
+  const stopA = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+  stopA.setAttribute("offset", "0%");
+  stopA.setAttribute(
+    "stop-color",
+    trend === "up" ? "rgba(134,239,172,0.35)" : "rgba(252,165,165,0.35)",
+  );
+  const stopB = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+  stopB.setAttribute("offset", "100%");
+  stopB.setAttribute("stop-color", "rgba(0,0,0,0)");
+  grad.appendChild(stopA);
+  grad.appendChild(stopB);
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+
+  const area = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+  area.setAttribute("points", areaStr);
+  area.setAttribute("fill", `url(#${grad.id})`);
+  svg.appendChild(area);
+
   const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-  poly.setAttribute("points", coords);
+  poly.setAttribute("points", polyStr);
   poly.setAttribute("fill", "none");
   poly.setAttribute("stroke-width", "2.2");
   poly.setAttribute("stroke-linecap", "round");
   poly.setAttribute("stroke-linejoin", "round");
   svg.appendChild(poly);
+
+  const last = coords[coords.length - 1];
+  const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  dot.setAttribute("cx", String(last.x));
+  dot.setAttribute("cy", String(last.y));
+  dot.setAttribute("r", "3.2");
+  dot.classList.add("pred-sparkline-dot");
+  svg.appendChild(dot);
+
   return svg;
 }
 
@@ -1899,12 +1953,277 @@ function buildPredictionTrendPill(trend, delta, prefix = "") {
 
 function matchesPredictionFilter(row) {
   const t0 = row.base.trend;
-  if (predictionsFilter === "all") return true;
-  if (predictionsFilter === "up")
-    return t0 === "up" || t0 === "forecast_up";
-  if (predictionsFilter === "down")
-    return t0 === "down" || t0 === "forecast_down";
-  return t0 === "stable";
+  if (predictionsFilter === "all") {
+    // pass trend filter
+  } else if (predictionsFilter === "up") {
+    if (t0 !== "up" && t0 !== "forecast_up") return false;
+  } else if (predictionsFilter === "down") {
+    if (t0 !== "down" && t0 !== "forecast_down") return false;
+  } else if (t0 !== "stable") {
+    return false;
+  }
+  if (predictionsRarityFilter !== "all") {
+    if (normalizeRarity(row.unit.rareza) !== predictionsRarityFilter) return false;
+  }
+  return true;
+}
+
+function buildPredictionsRarityFilterBar() {
+  const current = predictionsRarityFilter;
+  const bar = document.createElement("div");
+  bar.className = "rarity-filter-bar pred-rarity-filter";
+
+  const lbl = document.createElement("span");
+  lbl.className = "rarity-filter-label";
+  lbl.textContent = t(lang, "filter.rarity_label");
+
+  const chips = document.createElement("div");
+  chips.className = "rarity-filter-chips";
+
+  const allBtn = document.createElement("button");
+  allBtn.type = "button";
+  allBtn.className = `rarity-chip rarity-chip--all${current === "all" ? " active" : ""}`;
+  allBtn.textContent = t(lang, "filter.all");
+  allBtn.onclick = () => {
+    predictionsRarityFilter = "all";
+    localStorage.setItem("tdhub_pred_rarity", "all");
+    renderApp();
+  };
+  chips.appendChild(allBtn);
+
+  for (const id of RARITY_IDS_DESC) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    const cls = cardRarityClass(id);
+    btn.className = `rarity-chip ${cls}${current === id ? " active" : ""}`.trim();
+    btn.textContent = rarityLabel(lang, id);
+    btn.onclick = () => {
+      predictionsRarityFilter = id;
+      localStorage.setItem("tdhub_pred_rarity", id);
+      renderApp();
+    };
+    chips.appendChild(btn);
+  }
+
+  bar.appendChild(lbl);
+  bar.appendChild(chips);
+  return bar;
+}
+
+function buildPredictionDonut(summary) {
+  const total = Math.max(1, summary.total);
+  const upPct = (summary.up / total) * 100;
+  const stablePct = (summary.stable / total) * 100;
+  const downPct = (summary.down / total) * 100;
+  const upEnd = upPct;
+  const stableEnd = upEnd + stablePct;
+
+  const wrap = document.createElement("div");
+  wrap.className = "pred-donut-panel";
+
+  const ring = document.createElement("div");
+  ring.className = "pred-donut";
+  ring.style.background = `conic-gradient(
+    #86efac 0% ${upEnd}%,
+    #fde047 ${upEnd}% ${stableEnd}%,
+    #fca5a5 ${stableEnd}% 100%
+  )`;
+  ring.setAttribute("role", "img");
+  ring.setAttribute(
+    "aria-label",
+    `${summary.up} up, ${summary.stable} stable, ${summary.down} down`,
+  );
+
+  const hole = document.createElement("div");
+  hole.className = "pred-donut-hole";
+  const holeNum = document.createElement("span");
+  holeNum.className = "pred-donut-total";
+  holeNum.textContent = String(summary.total);
+  const holeLbl = document.createElement("span");
+  holeLbl.className = "pred-donut-lbl";
+  holeLbl.textContent = t(lang, "predictions.chart_units");
+  hole.appendChild(holeNum);
+  hole.appendChild(holeLbl);
+  ring.appendChild(hole);
+  wrap.appendChild(ring);
+
+  const legend = document.createElement("ul");
+  legend.className = "pred-donut-legend";
+  for (const [key, count, cls, labelKey] of [
+    ["up", summary.up, "pred-legend--up", "predictions.summary_up"],
+    ["stable", summary.stable, "pred-legend--stable", "predictions.summary_stable"],
+    ["down", summary.down, "pred-legend--down", "predictions.summary_down"],
+  ]) {
+    const pct = Math.round((count / total) * 100);
+    const li = document.createElement("li");
+    li.className = `pred-legend-item ${cls}`;
+    li.innerHTML = `
+      <span class="pred-legend-dot"></span>
+      <span class="pred-legend-text">${escapeHtml(t(lang, labelKey))}</span>
+      <span class="pred-legend-val">${count} <em>(${pct}%)</em></span>`;
+    li.title = `${count} ${key}`;
+    legend.appendChild(li);
+  }
+  wrap.appendChild(legend);
+  return wrap;
+}
+
+function buildRarityTrendChart(breakdown) {
+  const panel = document.createElement("div");
+  panel.className = "pred-rarity-chart";
+
+  const head = document.createElement("div");
+  head.className = "pred-rarity-chart-head";
+  head.innerHTML = `<span>${escapeHtml(t(lang, "predictions.chart_by_rarity"))}</span>`;
+  panel.appendChild(head);
+
+  const order = [
+    ...RARITY_IDS_DESC.filter((id) => breakdown[id]?.total),
+    ...Object.keys(breakdown).filter((id) => !RARITY_IDS_DESC.includes(id)),
+  ];
+
+  if (!order.length) {
+    const empty = document.createElement("p");
+    empty.className = "pred-rarity-chart-empty muted";
+    empty.textContent = t(lang, "predictions.chart_no_data");
+    panel.appendChild(empty);
+    return panel;
+  }
+
+  for (const rarityId of order) {
+    const stats = breakdown[rarityId];
+    if (!stats?.total) continue;
+
+    const row = document.createElement("div");
+    row.className = `pred-rarity-chart-row ${cardRarityClass(rarityId)}`;
+
+    const label = document.createElement("span");
+    label.className = "pred-rarity-chart-label";
+    label.textContent = rarityLabel(lang, rarityId);
+
+    const bar = document.createElement("div");
+    bar.className = "pred-rarity-chart-bar";
+    bar.setAttribute("role", "img");
+    bar.title = `${stats.up}↑ ${stats.stable}→ ${stats.down}↓`;
+
+    for (const [count, cls] of [
+      [stats.up, "pred-rarity-chart-seg--up"],
+      [stats.stable, "pred-rarity-chart-seg--stable"],
+      [stats.down, "pred-rarity-chart-seg--down"],
+    ]) {
+      if (!count) continue;
+      const seg = document.createElement("span");
+      seg.className = `pred-rarity-chart-seg ${cls}`;
+      seg.style.flex = String(Math.max(count, 1));
+      bar.appendChild(seg);
+    }
+
+    const countEl = document.createElement("span");
+    countEl.className = "pred-rarity-chart-count";
+    countEl.textContent = String(stats.total);
+
+    row.appendChild(label);
+    row.appendChild(bar);
+    row.appendChild(countEl);
+    panel.appendChild(row);
+  }
+
+  return panel;
+}
+
+function buildPredictionScoreBadge(score) {
+  const badge = document.createElement("span");
+  badge.className = "pred-score-badge";
+  if (score > 0) badge.classList.add("pred-score-badge--pos");
+  else if (score < 0) badge.classList.add("pred-score-badge--neg");
+  else badge.classList.add("pred-score-badge--neutral");
+  badge.title = t(lang, "predictions.score_hint");
+  badge.textContent = score > 0 ? `+${score}` : String(score);
+  return badge;
+}
+
+function buildPredictionCard(row) {
+  const card = document.createElement("article");
+  card.className = `pred-card ${cardRarityClass(row.unit.rareza)}`;
+
+  const head = document.createElement("div");
+  head.className = "pred-card-head";
+  if (row.unit.imagen) {
+    const img = document.createElement("img");
+    img.className = "pred-card-thumb";
+    img.src = assetUrl(row.unit.imagen);
+    img.alt = "";
+    head.appendChild(img);
+  }
+  const info = document.createElement("div");
+  info.className = "pred-card-info";
+  const nameRow = document.createElement("div");
+  nameRow.className = "pred-card-name-row";
+  const name = document.createElement("span");
+  name.className = "pred-card-name";
+  name.textContent = unitDisplayName(row.unit);
+  nameRow.appendChild(name);
+  nameRow.appendChild(buildRarityBadge(row.unit.rareza));
+  info.appendChild(nameRow);
+  const val = document.createElement("span");
+  val.className = "pred-card-val";
+  val.innerHTML = `${escapeHtml(t(lang, "predictions.base_value"))}: <strong>${row.base.current}</strong>`;
+  info.appendChild(val);
+  head.appendChild(info);
+
+  const sparkWrap = document.createElement("div");
+  sparkWrap.className = "pred-card-spark-wrap";
+  sparkWrap.appendChild(buildPredictionScoreBadge(row.score));
+  sparkWrap.appendChild(buildPredictionSparkline(row.sparkline));
+  head.appendChild(sparkWrap);
+
+  const trends = document.createElement("div");
+  trends.className = "pred-card-trends";
+  trends.appendChild(buildPredictionTrendPill(row.base.trend, row.base.delta));
+  const v2 = row.votes.voto2;
+  if (v2) {
+    const votePill = buildPredictionTrendPill(
+      v2.trend,
+      v2.delta,
+      `${t(lang, "predictions.vote_label")} `,
+    );
+    votePill.classList.add("pred-trend--vote");
+    trends.appendChild(votePill);
+  }
+  const v13 = row.votes.voto13;
+  if (v13 && v13.current !== v2?.current) {
+    const votePill = buildPredictionTrendPill(
+      v13.trend,
+      v13.delta,
+      `${t(lang, "predictions.vote13_label")} `,
+    );
+    votePill.classList.add("pred-trend--vote");
+    trends.appendChild(votePill);
+  }
+
+  const tip = document.createElement("p");
+  tip.className = "pred-card-tip muted";
+  tip.textContent = t(lang, row.tipKey);
+
+  card.appendChild(head);
+  card.appendChild(trends);
+  card.appendChild(tip);
+  return card;
+}
+
+function groupPredictionRowsByRarity(filteredRows) {
+  /** @type {Map<string, typeof filteredRows>} */
+  const map = new Map();
+  for (const row of filteredRows) {
+    const key = normalizeRarity(row.unit.rareza) || "other";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+  }
+  const order = [
+    ...RARITY_IDS_DESC.filter((id) => map.has(id)),
+    ...[...map.keys()].filter((id) => !RARITY_IDS_DESC.includes(id)),
+  ];
+  return order.map((rarityId) => ({ rarityId, rows: map.get(rarityId) || [] }));
 }
 
 function buildPredictionsView() {
@@ -1922,7 +2241,11 @@ function buildPredictionsView() {
 
   const rows = buildPredictions(units, vote_values, valueHistory);
   const summary = predictionSummary(rows);
+  const rarityBreakdown = buildRarityBreakdown(rows);
   const snaps = historySnapshotCount();
+
+  const analytics = document.createElement("div");
+  analytics.className = "pred-analytics";
 
   const summaryBox = document.createElement("div");
   summaryBox.className = "pred-summary";
@@ -1940,29 +2263,22 @@ function buildPredictionsView() {
       <span class="pred-summary-lbl">${escapeHtml(t(lang, "predictions.summary_down"))}</span>
     </div>`;
 
-  const chart = document.createElement("div");
-  chart.className = "pred-distribution";
-  chart.setAttribute("role", "img");
-  chart.setAttribute(
-    "aria-label",
-    `${summary.up} up, ${summary.stable} stable, ${summary.down} down`,
-  );
-  const total = Math.max(1, summary.total);
-  for (const [key, count, cls] of [
-    ["up", summary.up, "pred-distribution-seg--up"],
-    ["stable", summary.stable, "pred-distribution-seg--stable"],
-    ["down", summary.down, "pred-distribution-seg--down"],
-  ]) {
-    const seg = document.createElement("div");
-    seg.className = `pred-distribution-seg ${cls}`;
-    seg.style.flex = String(Math.max(count, count ? 1 : 0.15));
-    seg.title = `${count} ${key}`;
-    chart.appendChild(seg);
-  }
+  const charts = document.createElement("div");
+  charts.className = "pred-charts";
+  charts.appendChild(buildPredictionDonut(summary));
+  charts.appendChild(buildRarityTrendChart(rarityBreakdown));
+
+  analytics.appendChild(summaryBox);
+  analytics.appendChild(charts);
+  wrap.appendChild(analytics);
 
   const meta = document.createElement("p");
   meta.className = "pred-meta muted";
   meta.textContent = t(lang, snaps >= 2 ? "predictions.history_ready" : "predictions.history_warming");
+  wrap.appendChild(meta);
+
+  const controls = document.createElement("div");
+  controls.className = "pred-controls";
 
   const filterBar = document.createElement("div");
   filterBar.className = "pred-filter-bar";
@@ -1984,79 +2300,90 @@ function buildPredictionsView() {
     };
     filterBar.appendChild(btn);
   }
+  controls.appendChild(filterBar);
 
-  wrap.appendChild(summaryBox);
-  wrap.appendChild(chart);
-  wrap.appendChild(meta);
-  wrap.appendChild(filterBar);
+  const sortRow = document.createElement("div");
+  sortRow.className = "pred-sort-row";
+  const sortLbl = document.createElement("label");
+  sortLbl.className = "pred-sort-label";
+  sortLbl.htmlFor = "pred-sort-select";
+  sortLbl.textContent = t(lang, "predictions.sort_label");
+  const sortSel = document.createElement("select");
+  sortSel.id = "pred-sort-select";
+  sortSel.className = "pred-sort-select";
+  for (const [id, labelKey] of [
+    ["score", "predictions.sort_score"],
+    ["rarity", "predictions.sort_rarity"],
+    ["delta", "predictions.sort_delta"],
+    ["value", "predictions.sort_value"],
+    ["name", "predictions.sort_name"],
+  ]) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = t(lang, labelKey);
+    opt.selected = predictionsSort === id;
+    sortSel.appendChild(opt);
+  }
+  sortSel.onchange = () => {
+    predictionsSort = /** @type {typeof predictionsSort} */ (sortSel.value);
+    localStorage.setItem("tdhub_pred_sort", predictionsSort);
+    renderApp();
+  };
+  sortRow.appendChild(sortLbl);
+  sortRow.appendChild(sortSel);
+  controls.appendChild(sortRow);
+  controls.appendChild(buildPredictionsRarityFilterBar());
+  wrap.appendChild(controls);
 
-  const list = document.createElement("div");
-  list.className = "pred-list";
-  const filtered = rows.filter(matchesPredictionFilter);
+  const sorted = sortPredictionRows(rows, predictionsSort);
+  const filtered = sorted.filter(matchesPredictionFilter);
+
+  const resultMeta = document.createElement("p");
+  resultMeta.className = "pred-result-meta muted";
+  resultMeta.textContent = t(lang, "predictions.showing_count", {
+    shown: String(filtered.length),
+    total: String(rows.length),
+  });
+  wrap.appendChild(resultMeta);
+
+  const listRoot = document.createElement("div");
+  listRoot.className = "pred-list-root";
 
   if (!filtered.length) {
     const empty = document.createElement("p");
     empty.className = "pred-empty muted";
     empty.textContent = t(lang, "predictions.no_results");
-    list.appendChild(empty);
+    listRoot.appendChild(empty);
+  } else if (predictionsSort === "rarity") {
+    for (const { rarityId, rows: groupRows } of groupPredictionRowsByRarity(filtered)) {
+      const section = document.createElement("section");
+      section.className = `pred-rarity-section ${cardRarityClass(rarityId)}`;
+
+      const secHead = document.createElement("header");
+      secHead.className = "pred-rarity-section-head";
+      secHead.appendChild(buildRarityBadge(rarityId));
+      const secCount = document.createElement("span");
+      secCount.className = "pred-rarity-section-count muted";
+      secCount.textContent = t(lang, "predictions.section_count", {
+        count: String(groupRows.length),
+      });
+      secHead.appendChild(secCount);
+      section.appendChild(secHead);
+
+      const list = document.createElement("div");
+      list.className = "pred-list";
+      for (const row of groupRows) list.appendChild(buildPredictionCard(row));
+      section.appendChild(list);
+      listRoot.appendChild(section);
+    }
+  } else {
+    const list = document.createElement("div");
+    list.className = "pred-list";
+    for (const row of filtered) list.appendChild(buildPredictionCard(row));
+    listRoot.appendChild(list);
   }
 
-  for (const row of filtered) {
-    const card = document.createElement("article");
-    card.className = `pred-card ${cardRarityClass(row.unit.rareza)}`;
-
-    const head = document.createElement("div");
-    head.className = "pred-card-head";
-    if (row.unit.imagen) {
-      const img = document.createElement("img");
-      img.className = "pred-card-thumb";
-      img.src = assetUrl(row.unit.imagen);
-      img.alt = "";
-      head.appendChild(img);
-    }
-    const info = document.createElement("div");
-    info.className = "pred-card-info";
-    info.innerHTML = `
-      <span class="pred-card-name">${escapeHtml(unitDisplayName(row.unit))}</span>
-      <span class="pred-card-val">${escapeHtml(t(lang, "predictions.base_value"))}: <strong>${row.base.current}</strong></span>`;
-    head.appendChild(info);
-    head.appendChild(buildPredictionSparkline(row.sparkline));
-
-    const trends = document.createElement("div");
-    trends.className = "pred-card-trends";
-    trends.appendChild(buildPredictionTrendPill(row.base.trend, row.base.delta));
-    const v2 = row.votes.voto2;
-    if (v2) {
-      const votePill = buildPredictionTrendPill(
-        v2.trend,
-        v2.delta,
-        `${t(lang, "predictions.vote_label")} `,
-      );
-      votePill.classList.add("pred-trend--vote");
-      trends.appendChild(votePill);
-    }
-    const v13 = row.votes.voto13;
-    if (v13 && v13.current !== v2?.current) {
-      const votePill = buildPredictionTrendPill(
-        v13.trend,
-        v13.delta,
-        `${t(lang, "predictions.vote13_label")} `,
-      );
-      votePill.classList.add("pred-trend--vote");
-      trends.appendChild(votePill);
-    }
-
-    const tip = document.createElement("p");
-    tip.className = "pred-card-tip muted";
-    tip.textContent = t(lang, row.tipKey);
-
-    card.appendChild(head);
-    card.appendChild(trends);
-    card.appendChild(tip);
-    list.appendChild(card);
-  }
-
-  wrap.appendChild(list);
+  wrap.appendChild(listRoot);
   return wrap;
 }
 
