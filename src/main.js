@@ -9,6 +9,10 @@ import {
 import { t } from "./strings.js";
 import { VOTE_DISPLAY_ORDER, voteKey, voteDisplayLabel } from "./votes.js";
 import { callEdgeFunction, edgeFunctionsConfigured } from "./edgeApi.js";
+import {
+  compareImageWithUnits,
+  warmUnitTemplates,
+} from "./visualMatch/index.js";
 
 /** Lista de valores oficial (Sorcerer TD Value list). */
 const OFFICIAL_VALUE_LIST_URL =
@@ -113,12 +117,9 @@ const TD_MOBILE_MQ =
     : null;
 
 let testerIpStatus = /** @type {"pending" | "allowed" | "denied"} */ ("pending");
-const SCANNER_VECTOR_SIZE = 40;
-// Umbral ajustado: demasiada dureza => 0 detecciones.
-// Se compensa con filtro por "gap" y supresión de solapamientos.
-const SCANNER_MATCH_THRESHOLD = 0.70;
 let appBootstrapped = false;
 let hasPlayedEnterAnim = false;
+let hasPlayedPageIntro = false;
 const CREDITS_PROFILES = [
   {
     roleKey: "credits.role_creator",
@@ -145,8 +146,8 @@ let scannerTesterNotice = "";
 let scannerTesterImageDataUrl = "";
 let scannerTesterAnalyzing = false;
 let scannerTesterMatches = [];
+let scannerTesterTop5 = [];
 const CORRECTION_HISTORY_KEY = "td_correction_history";
-const scannerTemplateCache = new Map();
 const routeScrollTop = Object.create(null);
 const tradePickerScrollTop = { left: 0, right: 0 };
 
@@ -1080,56 +1081,101 @@ function buildTradeView() {
 
 function buildTradeCompareBar(leftT, rightT, diff) {
   const total = leftT + rightT;
-  const leftPct = total > 0 ? (leftT / total) * 100 : 50;
-  const rightPct = total > 0 ? (rightT / total) * 100 : 50;
+  const leftFlex = total > 0 ? leftT : 1;
+  const rightFlex = total > 0 ? rightT : 1;
+  const leftPct = total > 0 ? Math.round((leftT / total) * 100) : 50;
+  const rightPct = total > 0 ? 100 - leftPct : 50;
 
   const wrap = document.createElement("div");
-  wrap.className = "trade-compare";
+  wrap.className = "trade-balance";
 
-  const labels = document.createElement("div");
-  labels.className = "trade-compare-labels";
+  const head = document.createElement("div");
+  head.className = "trade-balance-head";
 
-  const leftLbl = document.createElement("span");
-  leftLbl.className = "trade-compare-side trade-compare-side--left";
-  leftLbl.textContent = `${t(lang, "trade.left_short")}: ${leftT}`;
+  const leftSide = document.createElement("div");
+  leftSide.className = "trade-balance-side trade-balance-side--you";
+  leftSide.innerHTML = `
+    <span class="trade-balance-label">${escapeHtml(t(lang, "trade.left_short"))}</span>
+    <span class="trade-balance-value">${leftT}</span>`;
 
-  const rightLbl = document.createElement("span");
-  rightLbl.className = "trade-compare-side trade-compare-side--right";
-  rightLbl.textContent = `${t(lang, "trade.right_short")}: ${rightT}`;
+  const vs = document.createElement("div");
+  vs.className = "trade-balance-vs";
+  vs.textContent = "VS";
 
-  labels.appendChild(leftLbl);
-  labels.appendChild(rightLbl);
+  const rightSide = document.createElement("div");
+  rightSide.className = "trade-balance-side trade-balance-side--them";
+  rightSide.innerHTML = `
+    <span class="trade-balance-label">${escapeHtml(t(lang, "trade.right_short"))}</span>
+    <span class="trade-balance-value">${rightT}</span>`;
 
-  const track = document.createElement("div");
-  track.className = "trade-compare-track";
-  track.setAttribute("role", "img");
-  track.setAttribute(
-    "aria-label",
-    `${t(lang, "trade.left_tot")} ${leftT}, ${t(lang, "trade.right_tot")} ${rightT}, ${t(lang, "trade.diff")} ${diff}`,
-  );
+  head.appendChild(leftSide);
+  head.appendChild(vs);
+  head.appendChild(rightSide);
+
+  const meter = document.createElement("div");
+  meter.className = "trade-balance-meter";
 
   const leftFill = document.createElement("div");
-  leftFill.className = "trade-compare-fill trade-compare-fill--left";
-  leftFill.style.width = `${leftPct}%`;
+  leftFill.className = "trade-balance-fill trade-balance-fill--you";
+  leftFill.style.flex = String(leftFlex);
+
+  const notch = document.createElement("div");
+  notch.className = "trade-balance-notch";
 
   const rightFill = document.createElement("div");
-  rightFill.className = "trade-compare-fill trade-compare-fill--right";
-  rightFill.style.width = `${rightPct}%`;
+  rightFill.className = "trade-balance-fill trade-balance-fill--them";
+  rightFill.style.flex = String(rightFlex);
 
-  track.appendChild(leftFill);
-  track.appendChild(rightFill);
+  meter.appendChild(leftFill);
+  meter.appendChild(notch);
+  meter.appendChild(rightFill);
 
-  const diffRow = document.createElement("div");
-  diffRow.className = "trade-compare-diff muted";
-  diffRow.textContent =
-    total > 0
-      ? `${t(lang, "trade.diff")}: ${diff}`
-      : t(lang, "trade.bar_empty");
+  const meta = document.createElement("div");
+  meta.className = "trade-balance-meta";
 
-  wrap.appendChild(labels);
-  wrap.appendChild(track);
-  wrap.appendChild(diffRow);
+  const leftPctEl = document.createElement("span");
+  leftPctEl.className = "trade-balance-pct trade-balance-pct--you";
+  leftPctEl.textContent = `${leftPct}%`;
+
+  const diffEl = document.createElement("span");
+  diffEl.className = "trade-balance-diff";
+  diffEl.textContent =
+    total > 0 ? `${t(lang, "trade.diff")}: ${diff}` : t(lang, "trade.bar_empty");
+
+  const rightPctEl = document.createElement("span");
+  rightPctEl.className = "trade-balance-pct trade-balance-pct--them";
+  rightPctEl.textContent = `${rightPct}%`;
+
+  meta.appendChild(leftPctEl);
+  meta.appendChild(diffEl);
+  meta.appendChild(rightPctEl);
+
+  wrap.appendChild(head);
+  wrap.appendChild(meter);
+  wrap.appendChild(meta);
   return wrap;
+}
+
+function playPageIntro() {
+  if (hasPlayedPageIntro || typeof document === "undefined") return;
+  hasPlayedPageIntro = true;
+
+  const overlay = document.createElement("div");
+  overlay.className = "page-intro";
+  overlay.innerHTML = `
+    <div class="page-intro-noise" aria-hidden="true"></div>
+    <div class="page-intro-glow" aria-hidden="true"></div>
+    <div class="page-intro-content">
+      <p class="page-intro-kicker">SORCERER TD</p>
+      <h2 class="page-intro-title">Calculator</h2>
+      <div class="page-intro-line" aria-hidden="true"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add("page-intro--active"));
+  window.setTimeout(() => {
+    overlay.classList.add("page-intro--exit");
+    window.setTimeout(() => overlay.remove(), 900);
+  }, 1100);
 }
 
 function buildHomeView() {
@@ -1238,557 +1284,6 @@ function scannerResetNoticeError() {
   scannerTesterNotice = "";
 }
 
-function parseGeminiJson(output) {
-  const raw = String(output || "").trim();
-  try {
-    // Buscamos el JSON dentro del texto por si la IA añade algo fuera
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("No se encontró JSON");
-    return JSON.parse(match[0]);
-  } catch (err) {
-    // Fallback tolerante: si el JSON viene cortado, intentamos rescatar
-    // los objetos completos dentro de "found": [ {..}, {..}, ... ].
-    try {
-      const start = raw.indexOf('"found"');
-      if (start < 0) throw err;
-      const arrStart = raw.indexOf("[", start);
-      if (arrStart < 0) throw err;
-      const items = [];
-      let i = arrStart + 1;
-      while (i < raw.length) {
-        while (i < raw.length && raw[i] !== "{") {
-          if (raw[i] === "]") return { found: items };
-          i++;
-        }
-        if (i >= raw.length) break;
-        const objStart = i;
-        let depth = 0;
-        let inStr = false;
-        let esc = false;
-        while (i < raw.length) {
-          const ch = raw[i];
-          if (inStr) {
-            if (esc) esc = false;
-            else if (ch === "\\") esc = true;
-            else if (ch === '"') inStr = false;
-          } else {
-            if (ch === '"') inStr = true;
-            else if (ch === "{") depth++;
-            else if (ch === "}") {
-              depth--;
-              if (depth === 0) {
-                const chunk = raw.slice(objStart, i + 1);
-                try {
-                  const parsed = JSON.parse(chunk);
-                  if (parsed && typeof parsed === "object") items.push(parsed);
-                } catch (_) {
-                  // objeto corrupto → lo ignoramos
-                }
-                i++;
-                break;
-              }
-            }
-          }
-          i++;
-        }
-        // si se cortó antes de cerrar "}", salimos y devolvemos lo rescatado
-        if (depth !== 0) break;
-      }
-      return { found: items };
-    } catch (_) {
-      console.error("Error parseando JSON de Gemini:", raw);
-      return { found: [] };
-    }
-  }
-}
-
-function updateScannerCdCells(found) {
-  const cells = document.querySelectorAll(".scanner-cd-cell");
-  cells.forEach((cell, index) => {
-    const valueEl = cell.querySelector(".scanner-cd-val");
-    const labelEl = cell.querySelector(".scanner-cd-lbl");
-    const item = found[index];
-    if (!valueEl || !labelEl) return;
-    if (item) {
-      valueEl.textContent = String(item.qty);
-      labelEl.textContent = item.name;
-    } else {
-      valueEl.textContent = "";
-      labelEl.textContent = "";
-    }
-  });
-}
-
-function normScanToken(s) {
-  return String(s || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLocaleLowerCase("es")
-    .normalize("NFC");
-}
-
-function normScanTokenLoose(s) {
-  return String(s || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("es")
-    .replace(/[^a-z0-9 ]+/g, "")
-    .trim();
-}
-
-function parseVoteFromGemini(v) {
-  if (v === null || v === undefined) return 1;
-  if (typeof v === "number" && Number.isFinite(v)) {
-    return Math.max(1, Math.min(13, Math.round(v)));
-  }
-  const s = String(v).trim().toLowerCase();
-  if (!s) return 1;
-  if (s === "voto" || s === "vote") return 1;
-  const m = s.match(/^(?:voto|vote)[_\s-]?(\d{1,2})$/i);
-  if (m) return Math.max(1, Math.min(13, Number(m[1]) || 1));
-  const digits = s.replace(/\D/g, "");
-  if (digits) return Math.max(1, Math.min(13, Number(digits) || 1));
-  return 1;
-}
-
-function buildScannerUnitLookup() {
-  /** @type {Record<string, any>} */
-  const byNorm = Object.create(null);
-  for (const u of units) {
-    const es = normScanToken(u?.nombre);
-    const en = normScanToken(u?.nombre_en);
-    if (es) byNorm[es] = u;
-    if (en && !(en in byNorm)) byNorm[en] = u;
-
-    const esL = normScanTokenLoose(u?.nombre);
-    const enL = normScanTokenLoose(u?.nombre_en);
-    if (esL && !(esL in byNorm)) byNorm[esL] = u;
-    if (enL && !(enL in byNorm)) byNorm[enL] = u;
-  }
-  return byNorm;
-}
-
-function pickUnitFromLookup(lookup, rawName) {
-  const key = normScanToken(rawName);
-  if (lookup[key]) return lookup[key];
-  const keyL = normScanTokenLoose(rawName);
-  if (lookup[keyL]) return lookup[keyL];
-  return null;
-}
-async function scanWithGemini(base64Image, candidates, maxCount = 6) {
-  if (!edgeFunctionsConfigured()) {
-    throw new Error("Scanner no configurado (falta Supabase en .env).");
-  }
-
-  try {
-    const pool = Array.isArray(candidates) && candidates.length ? candidates : units;
-    const namesList = pool.map((u) => u.nombre).filter(Boolean);
-
-    const data = await callEdgeFunction("gemini-scan", {
-      body: {
-        image: base64Image,
-        namesList,
-        maxCount,
-      },
-    });
-
-    const text = String(data?.text || "").trim();
-    if (!text) throw new Error("Respuesta vacía del servidor.");
-
-    return parseGeminiJson(text);
-  } catch (error) {
-    console.error("Error en el escaneo remoto:", error);
-    throw new Error("Fallo en el escaneo: " + (error?.message || String(error)));
-  }
-}
-function scannerImageFromSrc(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.decoding = "async";
-    img.loading = "eager";
-    img.onload = () => resolve(img);
-    img.onerror = (e) => reject(e);
-    img.src = String(src || "");
-  });
-}
-
-function scannerVectorFromImage(img, size = SCANNER_VECTOR_SIZE, centerRatio = 1) {
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.clearRect(0, 0, size, size);
-  const side = Math.min(img.naturalWidth || img.width, img.naturalHeight || img.height);
-  const cr = Math.max(0.2, Math.min(1, centerRatio));
-  const sx = ((img.naturalWidth || img.width) - side) / 2 + (side * (1 - cr)) / 2;
-  const sy = ((img.naturalHeight || img.height) - side) / 2 + (side * (1 - cr)) / 2;
-  const ss = side * cr;
-  ctx.drawImage(img, sx, sy, ss, ss, 0, 0, size, size);
-  const raw = ctx.getImageData(0, 0, size, size).data;
-  return scannerFeatureFromImageData(raw, size, size);
-}
-
-
-function scannerSimilarity(vecA, vecB) {
-  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
-  for (let i = 0; i < vecA.length; i++) {
-    dot += vecA[i] * vecB[i];
-    na += vecA[i] * vecA[i];
-    nb += vecB[i] * vecB[i];
-  }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  if (!denom) return 0;
-  return (dot / denom + 1) / 2;
-}
-
-function scannerHistogramSimilarity(a, b) {
-  if (!a || !b || a.length !== b.length) return 0;
-  let num = 0;
-  let den = 0;
-  for (let i = 0; i < a.length; i++) {
-    num += Math.min(a[i], b[i]);
-    den += Math.max(a[i], b[i]);
-  }
-  return den > 0 ? num / den : 0;
-}
-
-async function scannerTemplateForUnit(unit) {
-  if (!unit?.imagen) return null;
-  if (scannerTemplateCache.has(unit.nombre)) return scannerTemplateCache.get(unit.nombre);
-  try {
-    const img = await scannerImageFromSrc(assetUrl(unit.imagen));
-    const full = scannerVectorFromImage(img);
-    const center = scannerVectorFromImage(img, SCANNER_VECTOR_SIZE, 0.7);
-    const packed = { full, center };
-    scannerTemplateCache.set(unit.nombre, packed);
-    return packed;
-  } catch (_) {
-    scannerTemplateCache.set(unit.nombre, null);
-    return null;
-  }
-}
-
-function scannerIou(a, b) {
-  const x1 = Math.max(a.x, b.x);
-  const y1 = Math.max(a.y, b.y);
-  const x2 = Math.min(a.x + a.w, b.x + b.w);
-  const y2 = Math.min(a.y + a.h, b.y + b.h);
-  const iw = Math.max(0, x2 - x1);
-  const ih = Math.max(0, y2 - y1);
-  const inter = iw * ih;
-  const union = a.w * a.h + b.w * b.h - inter;
-  return union > 0 ? inter / union : 0;
-}
-
-function scannerBuildCandidates(img) {
-  // Eliminamos todos los recortes raros que fallan.
-  // Enviamos solo la imagen completa para que la IA no se confunda.
-  const w = img.naturalWidth || img.width;
-  const h = img.naturalHeight || img.height;
-  
-  // Retornamos un único "crop" que es la imagen entera.
-  return [{
-    x: 0,
-    y: 0,
-    w: w,
-    h: h
-  }];
-}
-
-async function scannerEstimateCardCountFromDataUrl(dataUrl) {
-  try {
-    const img = await scannerImageFromSrc(dataUrl);
-    const w = img.naturalWidth || img.width;
-    const h = img.naturalHeight || img.height;
-    const canvas = document.createElement("canvas");
-    const dw = Math.min(420, w);
-    const dh = Math.max(1, Math.round((h / w) * dw));
-    canvas.width = dw;
-    canvas.height = dh;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return 1;
-    ctx.drawImage(img, 0, 0, dw, dh);
-    const data = ctx.getImageData(0, 0, dw, dh).data;
-    const colScore = new Float32Array(dw);
-    for (let x = 0; x < dw; x++) {
-      let blueHits = 0;
-      for (let y = 0; y < dh; y += 2) {
-        const p = (y * dw + x) * 4;
-        const r = data[p];
-        const g = data[p + 1];
-        const b = data[p + 2];
-        if (b > 120 && b - Math.max(r, g) > 55) blueHits++;
-      }
-      colScore[x] = blueHits / Math.max(1, Math.ceil(dh / 2));
-    }
-    let mean = 0;
-    for (let x = 0; x < dw; x++) mean += colScore[x];
-    mean /= dw || 1;
-    const thr = Math.min(0.55, Math.max(0.18, mean * 1.35));
-    let runs = 0;
-    let x = 0;
-    while (x < dw) {
-      while (x < dw && colScore[x] < thr) x++;
-      if (x >= dw) break;
-      const x0 = x;
-      while (x < dw && colScore[x] >= thr) x++;
-      const x1 = x - 1;
-      if (x1 - x0 + 1 >= Math.floor(dw * 0.12)) runs++;
-    }
-    return Math.max(1, Math.min(12, runs || 1));
-  } catch {
-    return 1;
-  }
-}
-
-const scannerVoteTplCache = new Map();
-
-async function scannerVoteTemplates() {
-  if (scannerVoteTplCache.size) return scannerVoteTplCache;
-  for (let i = 1; i <= 13; i++) {
-    try {
-      const img = await scannerImageFromSrc(assetUrl(`assets/votos/voto${i}.png`));
-      const v = scannerVectorFromImage(img, 32, 1);
-      if (v) scannerVoteTplCache.set(i, v);
-    } catch (_) {
-      // si falta algún asset, lo ignoramos
-    }
-  }
-  return scannerVoteTplCache;
-}
-
-async function scannerDetectVoteFromCrop(img, cropRect) {
-  // Recortamos esquinas donde suele estar el logo (abajo izq/der).
-  const w = img.naturalWidth || img.width;
-  const h = img.naturalHeight || img.height;
-  const x = Math.max(0, cropRect.x);
-  const y = Math.max(0, cropRect.y);
-  const cw = Math.max(1, cropRect.w);
-  const ch = Math.max(1, cropRect.h);
-  const corner = Math.floor(Math.min(cw, ch) * 0.38);
-  const corners = [
-    { x: x, y: y + ch - corner, w: corner, h: corner }, // bottom-left
-    { x: x + cw - corner, y: y + ch - corner, w: corner, h: corner }, // bottom-right
-  ];
-  const tpl = await scannerVoteTemplates();
-  let best = { vote: 1, sim: 0 };
-  for (const c of corners) {
-    const vec = scannerVectorFromCrop(img, c, 1);
-    if (!vec) continue;
-    for (const [vote, tvec] of tpl.entries()) {
-      const simEdge = scannerSimilarity(vec.edge, tvec.edge);
-      const simOcc = scannerSimilarity(vec.occ, tvec.occ);
-      const simHist = scannerHistogramSimilarity(vec.hist, tvec.hist);
-      const sim = simEdge * 0.55 + simOcc * 0.25 + simHist * 0.2;
-      if (sim > best.sim) best = { vote, sim };
-    }
-  }
-  // threshold: si no hay coincidencia clara, devolvemos voto1 (sin voto vinculante).
-  return best.sim >= 0.62 ? best.vote : 1;
-}
-
-function scannerVectorFromCrop(img, crop, centerRatio = 1) {
-  const canvas = document.createElement("canvas");
-  canvas.width = SCANNER_VECTOR_SIZE;
-  canvas.height = SCANNER_VECTOR_SIZE;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  const c = Math.max(0.2, Math.min(1, centerRatio));
-  const cx = crop.x + (crop.w * (1 - c)) / 2;
-  const cy = crop.y + (crop.h * (1 - c)) / 2;
-  const cw = crop.w * c;
-  const ch = crop.h * c;
-  ctx.drawImage(
-    img,
-    cx,
-    cy,
-    cw,
-    ch,
-    0,
-    0,
-    SCANNER_VECTOR_SIZE,
-    SCANNER_VECTOR_SIZE,
-  );
-  const raw = ctx.getImageData(0, 0, SCANNER_VECTOR_SIZE, SCANNER_VECTOR_SIZE).data;
-  return scannerFeatureFromImageData(raw, SCANNER_VECTOR_SIZE, SCANNER_VECTOR_SIZE);
-}
-
-function scannerFeatureFromImageData(raw, width, height) {
-  const gray = new Float32Array(width * height);
-  const bins = new Uint32Array(64);
-  const rgb = new Float32Array(width * height * 3);
-  for (let i = 0, p = 0; i < raw.length; i += 4, p += 1) {
-    const r = raw[i];
-    const g = raw[i + 1];
-    const b = raw[i + 2];
-    const a = raw[i + 3] / 255;
-    rgb[p * 3] = r / 255;
-    rgb[p * 3 + 1] = g / 255;
-    rgb[p * 3 + 2] = b / 255;
-    const rb = r >> 6;
-    const gb = g >> 6;
-    const bb = b >> 6;
-    bins[(rb << 4) | (gb << 2) | bb] += 1;
-    gray[p] = ((0.299 * r + 0.587 * g + 0.114 * b) / 255) * a;
-  }
-  let maxBin = 0;
-  for (let i = 1; i < bins.length; i++) {
-    if (bins[i] > bins[maxBin]) maxBin = i;
-  }
-  const bgR = ((maxBin >> 4) & 0b11) / 3;
-  const bgG = ((maxBin >> 2) & 0b11) / 3;
-  const bgB = (maxBin & 0b11) / 3;
-  const feat = new Float32Array(width * height);
-  const occ = new Float32Array(64);
-  const hist = new Float32Array(12);
-  const cx = (width - 1) / 2;
-  const cy = (height - 1) / 2;
-  const rx = Math.max(1, cx);
-  const ry = Math.max(1, cy);
-  let fgCount = 0;
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      const p = y * width + x;
-      const gx = gray[p + 1] - gray[p - 1];
-      const gy = gray[p + width] - gray[p - width];
-      let mag = Math.hypot(gx, gy);
-      const pr = rgb[p * 3];
-      const pg = rgb[p * 3 + 1];
-      const pb = rgb[p * 3 + 2];
-      const bgDist = Math.hypot(pr - bgR, pg - bgG, pb - bgB);
-      const fgWeight = Math.max(0, Math.min(1, (bgDist - 0.08) / 0.34));
-      const dx = (x - cx) / rx;
-      const dy = (y - cy) / ry;
-      const radial = Math.max(0, 1 - Math.hypot(dx, dy));
-      mag *= (0.24 + radial * 0.76) * (0.28 + fgWeight * 0.72);
-      if (x > width * 0.72 && y > height * 0.72) mag *= 0.3;
-      if (x < width * 0.2 && y < height * 0.2) mag *= 0.55;
-      feat[p] = mag;
-      if (fgWeight > 0.24) {
-        fgCount += 1;
-        const gx8 = Math.min(7, Math.floor((x / width) * 8));
-        const gy8 = Math.min(7, Math.floor((y / height) * 8));
-        occ[gy8 * 8 + gx8] += 1;
-        const hueBin = Math.min(5, Math.floor(pr * 6));
-        const sat = Math.max(pr, pg, pb) - Math.min(pr, pg, pb);
-        const satBin = sat > 0.28 ? 1 : 0;
-        hist[satBin * 6 + hueBin] += 1;
-      }
-    }
-  }
-  let mean = 0;
-  for (let i = 0; i < feat.length; i++) mean += feat[i];
-  mean /= feat.length || 1;
-  let sq = 0;
-  for (let i = 0; i < feat.length; i++) {
-    const d = feat[i] - mean;
-    sq += d * d;
-  }
-  const std = Math.sqrt(sq / (feat.length || 1)) || 1;
-  for (let i = 0; i < feat.length; i++) feat[i] = (feat[i] - mean) / std;
-  const occNorm = Math.max(1, fgCount);
-  for (let i = 0; i < occ.length; i++) occ[i] /= occNorm;
-  const histNorm = hist.reduce((a, b) => a + b, 0) || 1;
-  for (let i = 0; i < hist.length; i++) hist[i] /= histNorm;
-  return { edge: feat, occ, hist };
-}
-
-async function scannerAnalyzeImageDataUrl(dataUrl) {
-  const img = await scannerImageFromSrc(dataUrl);
-  const crops = scannerBuildCandidates(img);
-  const rawHits = [];
-  /** @type {null | {unit:any, similarity:number, rect:any}} */
-  let bestGlobal = null;
-  for (const crop of crops) {
-    const srcFull = scannerVectorFromCrop(img, crop, 1);
-    const srcCenter = scannerVectorFromCrop(img, crop, 0.7);
-    if (!srcFull || !srcCenter) continue;
-    let best = null;
-    let second = null;
-    for (const unit of units) {
-      const tpl = await scannerTemplateForUnit(unit);
-      if (!tpl?.full || !tpl?.center) continue;
-      const simFullEdge = scannerSimilarity(srcFull.edge, tpl.full.edge);
-      const simCenterEdge = scannerSimilarity(srcCenter.edge, tpl.center.edge);
-      const simOcc =
-        (scannerSimilarity(srcFull.occ, tpl.full.occ) +
-          scannerSimilarity(srcCenter.occ, tpl.center.occ)) /
-        2;
-      const simHist =
-        (scannerHistogramSimilarity(srcFull.hist, tpl.full.hist) +
-          scannerHistogramSimilarity(srcCenter.hist, tpl.center.hist)) /
-        2;
-      const sim = simFullEdge * 0.25 + simCenterEdge * 0.45 + simOcc * 0.2 + simHist * 0.1;
-      const row = { unit, similarity: sim };
-      if (!best || sim > best.similarity) {
-        second = best;
-        best = row;
-      } else if (!second || sim > second.similarity) {
-        second = row;
-      }
-    }
-    if (!best) continue;
-    if (!bestGlobal || best.similarity > bestGlobal.similarity) {
-      bestGlobal = { ...best, rect: crop };
-    }
-    const gap = best.similarity - (second?.similarity ?? 0);
-    if (best.similarity < SCANNER_MATCH_THRESHOLD || gap < 0.006) continue;
-    rawHits.push({ ...best, rect: crop });
-  }
-
-  rawHits.sort((a, b) => b.similarity - a.similarity);
-  const selected = [];
-  for (const h of rawHits) {
-    let overlaps = false;
-    for (const s of selected) {
-      if (scannerIou(h.rect, s.rect) > 0.42) {
-        overlaps = true;
-        break;
-      }
-    }
-    if (!overlaps) selected.push(h);
-    if (selected.length >= 12) break;
-  }
-
-  const merged = new Map();
-  for (const h of selected) {
-    const prev = merged.get(h.unit.nombre) || {
-      unit: h.unit,
-      count: 0,
-      bestSimilarity: 0,
-    };
-    prev.count += 1;
-    prev.bestSimilarity = Math.max(prev.bestSimilarity, h.similarity);
-    merged.set(h.unit.nombre, prev);
-  }
-  const finalRows = [...merged.values()].sort((a, b) => {
-    if (b.count !== a.count) return b.count - a.count;
-    return b.bestSimilarity - a.bestSimilarity;
-  });
-  if (finalRows.length) {
-    // Adjuntamos voto detectado por icono (si procede)
-    for (const row of finalRows) {
-      // buscamos el mejor rect para esa unidad entre selected
-      const bestRect = selected
-        .filter((s) => s.unit?.nombre === row.unit?.nombre)
-        .sort((a, b) => b.similarity - a.similarity)[0]?.rect;
-      if (bestRect) row.vote = await scannerDetectVoteFromCrop(img, bestRect);
-      else row.vote = 1;
-    }
-    return finalRows;
-  }
-  if (bestGlobal && bestGlobal.similarity >= 0.58) {
-    const vote = await scannerDetectVoteFromCrop(img, bestGlobal.rect);
-    return [{ unit: bestGlobal.unit, count: 1, bestSimilarity: bestGlobal.similarity, vote }];
-  }
-  return [];
-}
 
 function buildScannerView() {
   const wrap = document.createElement("div");
@@ -1890,6 +1385,7 @@ function buildTesterView() {
         scannerTesterImageDataUrl = String(reader.result || "");
         scannerTesterNotice = t(lang, "scanner.source_loaded");
         scannerTesterMatches = [];
+        scannerTesterTop5 = [];
         renderApp();
       };
       reader.readAsDataURL(file);
@@ -1934,85 +1430,28 @@ function buildTesterView() {
     scannerTesterAnalyzing = true;
     renderApp();
     try {
-      // 1) Intentamos detección local (más precisa si las plantillas cargan)
-      let candidateUnits = null;
-      let localRows = null;
-      const maxCount = await scannerEstimateCardCountFromDataUrl(scannerTesterImageDataUrl);
-      try {
-        const local = await scannerAnalyzeImageDataUrl(scannerTesterImageDataUrl);
-        localRows = Array.isArray(local) ? local : null;
-        candidateUnits = localRows ? localRows.map((r) => r.unit).filter(Boolean) : null;
-      } catch (_) {
-        candidateUnits = null;
-        localRows = null;
+      const result = await compareImageWithUnits(scannerTesterImageDataUrl, units, {
+        topN: 5,
+        resolveAssetUrl: assetUrl,
+      });
+
+      scannerTesterTop5 = result.top5;
+      scannerTesterMatches = result.detections.map((row) => ({
+        unit: row.unit,
+        count: row.count,
+        vote: row.vote,
+        bestSimilarity: row.bestSimilarity,
+        confidencePercent: row.confidencePercent,
+      }));
+
+      if (!scannerTesterTop5.length && !scannerTesterMatches.length) {
+        scannerTesterNotice = t(lang, "scanner.no_matches");
+      } else {
+        scannerTesterNotice = "";
       }
-
-      const matches = [];
-      const foundItems = [];
-
-        if (localRows && localRows.length) {
-          for (const row of localRows) {
-            const qty = Math.max(1, Math.min(999, Number(row.count) || 1));
-            const voteNum = Math.max(1, Math.min(13, Number(row.vote) || 1));
-            matches.push({
-              unit: row.unit,
-              count: qty,
-              vote: voteNum,
-              bestSimilarity: Number(row.bestSimilarity) || 0,
-            });
-            foundItems.push({ name: unitDisplayName(row.unit), qty });
-          }
-        } else {
-          // 2) Fallback: IA, acotada por candidatas si existían
-          const parsed = await scanWithGemini(scannerTesterImageDataUrl, candidateUnits, maxCount);
-
-          const lookup = buildScannerUnitLookup();
-          const cleaned = [];
-          const seen = new Set();
-          for (const item of parsed.found || []) {
-            if (cleaned.length >= maxCount) break;
-            const nm = String(item?.name ?? "").trim();
-            if (!nm || seen.has(nm)) continue;
-            seen.add(nm);
-            cleaned.push(item);
-          }
-          for (const item of cleaned) {
-            const qty = Math.max(1, Math.min(999, Number(item.qty) || 1));
-            const voteNum = parseVoteFromGemini(item.vote);
-
-            const rawName = item?.name ?? item?.unit ?? item?.nombre ?? "";
-            const unit = pickUnitFromLookup(lookup, rawName);
-
-            matches.push({
-              unit: unit || { nombre: item.name, valor: 0, imagen: "", rareza: "" },
-              count: qty,
-              vote: voteNum,
-              bestSimilarity: unit ? 1 : 0
-            });
-
-            foundItems.push({
-              name: unit ? unitDisplayName(unit) : String(rawName || item.name || ""),
-              qty
-            });
-          }
-        }
-        
-
-        scannerTesterMatches = matches;
-        
-        // 3. Actualizamos los cuadraditos de la interfaz
-        if (typeof updateScannerCdCells === "function") {
-          updateScannerCdCells(foundItems);
-        }
-
-        if (!scannerTesterMatches.length) {
-          scannerTesterNotice = "No se detectaron unidades.";
-        } else {
-          scannerTesterNotice = "";
-        }
       } catch (e) {
         console.error("Error en el scanner:", e);
-        scannerTesterError = "Error al conectar con la IA: " + (e.message || String(e));
+        scannerTesterError = t(lang, "scanner.error") + (e?.message || String(e));
       } finally {
         scannerTesterAnalyzing = false;
         renderApp();
@@ -2025,6 +1464,7 @@ function buildTesterView() {
   clearBtn.onclick = () => {
     scannerTesterImageDataUrl = "";
     scannerTesterMatches = [];
+    scannerTesterTop5 = [];
     scannerResetNoticeError();
     renderApp();
   };
@@ -2055,7 +1495,35 @@ function buildTesterView() {
     card.appendChild(note);
   }
 
-  if (scannerTesterMatches.length) {
+  if (scannerTesterTop5.length) {
+    const topTitle = document.createElement("h3");
+    topTitle.className = "scanner-results-title";
+    topTitle.textContent = t(lang, "scanner.top5_title");
+    card.appendChild(topTitle);
+
+    const topList = document.createElement("ol");
+    topList.className = "visual-top5";
+    for (const row of scannerTesterTop5) {
+      const li = document.createElement("li");
+      li.className = "visual-top5-item";
+      const pct = Number(row.confidencePercent) || 0;
+      const thumb = row.unit?.imagen
+        ? `<img class="visual-top5-thumb" src="${escapeHtml(assetUrl(row.unit.imagen))}" alt="" loading="lazy" />`
+        : `<span class="visual-top5-thumb visual-top5-thumb--empty"></span>`;
+      li.innerHTML = `
+        <span class="visual-top5-rank">${row.rank}</span>
+        ${thumb}
+        <div class="visual-top5-meta">
+          <span class="visual-top5-name">${escapeHtml(unitDisplayName(row.unit))}</span>
+          <div class="visual-top5-bar"><span class="visual-top5-bar-fill" style="width:${pct}%"></span></div>
+        </div>
+        <span class="visual-top5-pct">${pct.toFixed(1)}%</span>`;
+      topList.appendChild(li);
+    }
+    card.appendChild(topList);
+  }
+
+    if (scannerTesterMatches.length) {
     const title = document.createElement("h3");
     title.className = "scanner-results-title";
     title.textContent = t(lang, "scanner.results_title");
@@ -2071,7 +1539,7 @@ function buildTesterView() {
       const nm = unitDisplayName(row.unit);
       item.innerHTML = `
         <span class="name">${escapeHtml(nm)} x${row.count}</span>
-        <span class="sim">V${row.vote || 1}</span>
+        <span class="sim">${(Number(row.confidencePercent) || 0).toFixed(1)}% · V${row.vote || 1}</span>
         <span class="val">${Number(row.unit.valor) || 0}</span>
       `;
       list.appendChild(item);
@@ -2525,6 +1993,8 @@ async function bootstrap() {
   syncTdMobileAttr();
   root.className = "app-ready";
   appBootstrapped = true;
+  playPageIntro();
+  warmUnitTemplates(units, assetUrl).catch(() => {});
   renderApp();
   resolveTesterIpAccess().then(() => renderApp());
 
