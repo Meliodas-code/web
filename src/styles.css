@@ -1813,7 +1813,6 @@ main.content {
   box-shadow:
     0 0 0 4px rgba(255, 255, 255, 0.03),
     0 8px 24px rgba(0, 0, 0, 0.35);
-  animation: tradeVsPulse 2.4s ease-in-out infinite;
 }
 
 .trade-balance-meter {
@@ -1829,8 +1828,9 @@ main.content {
 .trade-balance-fill {
   min-width: 0;
   flex: 1;
-  transition: flex 0.7s cubic-bezier(0.22, 1, 0.36, 1);
-  animation: tradeMeterReveal 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition:
+    flex 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.25s ease;
 }
 
 .trade-balance-fill--you {
@@ -2237,6 +2237,59 @@ main.content {
 .values-table-wrap--units {
   display: inline-block;
   max-width: 100%;
+}
+
+.values-rarity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.values-rarity-col {
+  min-width: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.values-rarity-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent);
+}
+
+.values-rarity-col-body {
+  max-height: min(52vh, 420px);
+  overflow: auto;
+}
+
+.values-table--units-compact {
+  width: 100%;
+  min-width: 0;
+}
+
+.values-table--units-compact .values-cell-unit {
+  max-width: 0;
+  width: 100%;
+}
+
+.values-table--units-compact .values-cell-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.values-table--units-compact thead th:last-child,
+.values-table--units-compact tbody td.values-cell-num {
+  width: 4.5rem;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .values-table-wrap--wide {
