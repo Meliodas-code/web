@@ -13,6 +13,12 @@ import {
   compareImageWithUnits,
   warmUnitTemplates,
 } from "./visualMatch/index.js";
+import {
+  recordValueSnapshot,
+  buildPredictions,
+  predictionSummary,
+  historySnapshotCount,
+} from "./predictions.js";
 
 /** Lista de valores oficial (Sorcerer TD Value list). */
 const OFFICIAL_VALUE_LIST_URL =
@@ -24,6 +30,12 @@ const OFFICIAL_VALUE_LIST_URL =
 let units = [];
 /** @type {Record<string, Record<string, number>>} */
 let vote_values = {};
+/** @type {Array<{at:number, units:Record<string, {valor:number, votes:Record<string, number>}>}>} */
+let valueHistory = [];
+let predictionsFilter =
+  typeof localStorage !== "undefined"
+    ? localStorage.getItem("tdhub_pred_filter") || "all"
+    : "all";
 
 const LANG_COOKIE = "tdhub_lang";
 const LANG_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
@@ -201,7 +213,7 @@ function clearScannerCountdown() {
 
 function rememberRouteScroll() {
   const route = currentRoute();
-  if (route !== "calc" && route !== "trade" && route !== "values" && route !== "tester")
+  if (route !== "calc" && route !== "trade" && route !== "values" && route !== "tester" && route !== "predictions")
     return;
   const mainEl = document.querySelector("main.content");
   if (!mainEl) return;
@@ -1264,6 +1276,7 @@ function buildHomeView() {
   card("calc", "∑", t(lang, "nav.calc"), t(lang, "main.calc_desc"), "#/calc");
   card("trade", "⇄", t(lang, "nav.trade"), t(lang, "main.trade_desc"), "#/trade");
   card("values", "▦", t(lang, "nav.values"), t(lang, "main.values_desc"), "#/values");
+  card("predictions", "◈", t(lang, "nav.predictions"), t(lang, "main.predictions_desc"), "#/predictions");
   if (testerAccessAllowed()) {
     card("tester", "⚙", t(lang, "nav.tester"), t(lang, "main.tester_desc"), "#/tester");
   }
@@ -1830,6 +1843,223 @@ function buildValuesView() {
   return wrap;
 }
 
+function predictionTrendLabel(trend) {
+  const keys = {
+    up: "predictions.trend_up",
+    down: "predictions.trend_down",
+    stable: "predictions.trend_stable",
+    forecast_up: "predictions.trend_forecast_up",
+    forecast_down: "predictions.trend_forecast_down",
+  };
+  return t(lang, keys[trend] || keys.stable);
+}
+
+function buildPredictionSparkline(points) {
+  const width = 96;
+  const height = 34;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("class", "pred-sparkline");
+  if (!points.length) return svg;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const coords = points
+    .map((v, i) => {
+      const x = (i / Math.max(1, points.length - 1)) * width;
+      const y = height - ((v - min) / range) * (height - 6) - 3;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const trend = points[points.length - 1] >= points[0] ? "up" : "down";
+  svg.classList.add(`pred-sparkline--${trend}`);
+  const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  poly.setAttribute("points", coords);
+  poly.setAttribute("fill", "none");
+  poly.setAttribute("stroke-width", "2.2");
+  poly.setAttribute("stroke-linecap", "round");
+  poly.setAttribute("stroke-linejoin", "round");
+  svg.appendChild(poly);
+  return svg;
+}
+
+function buildPredictionTrendPill(trend, delta, prefix = "") {
+  const pill = document.createElement("span");
+  pill.className = `pred-trend pred-trend--${trend}`;
+  const arrow =
+    trend === "up" || trend === "forecast_up"
+      ? "↑"
+      : trend === "down" || trend === "forecast_down"
+        ? "↓"
+        : "→";
+  const deltaTxt = delta !== 0 ? ` ${delta > 0 ? "+" : ""}${delta}` : "";
+  pill.textContent = `${prefix}${arrow} ${predictionTrendLabel(trend)}${deltaTxt}`;
+  return pill;
+}
+
+function matchesPredictionFilter(row) {
+  const t0 = row.base.trend;
+  if (predictionsFilter === "all") return true;
+  if (predictionsFilter === "up")
+    return t0 === "up" || t0 === "forecast_up";
+  if (predictionsFilter === "down")
+    return t0 === "down" || t0 === "forecast_down";
+  return t0 === "stable";
+}
+
+function buildPredictionsView() {
+  const wrap = document.createElement("div");
+  wrap.className = "view-predictions";
+
+  wrap.appendChild(buildPageHeader("predictions.title", "predictions.subtitle"));
+
+  const beta = document.createElement("div");
+  beta.className = "pred-beta-banner";
+  beta.innerHTML = `
+    <span class="pred-beta-badge">${escapeHtml(t(lang, "predictions.beta_badge"))}</span>
+    <p>${escapeHtml(t(lang, "predictions.beta_notice"))}</p>`;
+  wrap.appendChild(beta);
+
+  const rows = buildPredictions(units, vote_values, valueHistory);
+  const summary = predictionSummary(rows);
+  const snaps = historySnapshotCount();
+
+  const summaryBox = document.createElement("div");
+  summaryBox.className = "pred-summary";
+  summaryBox.innerHTML = `
+    <div class="pred-summary-stat pred-summary-stat--up">
+      <span class="pred-summary-num">${summary.up}</span>
+      <span class="pred-summary-lbl">${escapeHtml(t(lang, "predictions.summary_up"))}</span>
+    </div>
+    <div class="pred-summary-stat pred-summary-stat--stable">
+      <span class="pred-summary-num">${summary.stable}</span>
+      <span class="pred-summary-lbl">${escapeHtml(t(lang, "predictions.summary_stable"))}</span>
+    </div>
+    <div class="pred-summary-stat pred-summary-stat--down">
+      <span class="pred-summary-num">${summary.down}</span>
+      <span class="pred-summary-lbl">${escapeHtml(t(lang, "predictions.summary_down"))}</span>
+    </div>`;
+
+  const chart = document.createElement("div");
+  chart.className = "pred-distribution";
+  chart.setAttribute("role", "img");
+  chart.setAttribute(
+    "aria-label",
+    `${summary.up} up, ${summary.stable} stable, ${summary.down} down`,
+  );
+  const total = Math.max(1, summary.total);
+  for (const [key, count, cls] of [
+    ["up", summary.up, "pred-distribution-seg--up"],
+    ["stable", summary.stable, "pred-distribution-seg--stable"],
+    ["down", summary.down, "pred-distribution-seg--down"],
+  ]) {
+    const seg = document.createElement("div");
+    seg.className = `pred-distribution-seg ${cls}`;
+    seg.style.flex = String(Math.max(count, count ? 1 : 0.15));
+    seg.title = `${count} ${key}`;
+    chart.appendChild(seg);
+  }
+
+  const meta = document.createElement("p");
+  meta.className = "pred-meta muted";
+  meta.textContent = t(lang, snaps >= 2 ? "predictions.history_ready" : "predictions.history_warming");
+
+  const filterBar = document.createElement("div");
+  filterBar.className = "pred-filter-bar";
+  for (const [id, labelKey] of [
+    ["all", "predictions.filter_all"],
+    ["up", "predictions.filter_up"],
+    ["down", "predictions.filter_down"],
+    ["stable", "predictions.filter_stable"],
+  ]) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className =
+      predictionsFilter === id ? "pred-filter-btn active" : "pred-filter-btn";
+    btn.textContent = t(lang, labelKey);
+    btn.onclick = () => {
+      predictionsFilter = id;
+      localStorage.setItem("tdhub_pred_filter", id);
+      renderApp();
+    };
+    filterBar.appendChild(btn);
+  }
+
+  wrap.appendChild(summaryBox);
+  wrap.appendChild(chart);
+  wrap.appendChild(meta);
+  wrap.appendChild(filterBar);
+
+  const list = document.createElement("div");
+  list.className = "pred-list";
+  const filtered = rows.filter(matchesPredictionFilter);
+
+  if (!filtered.length) {
+    const empty = document.createElement("p");
+    empty.className = "pred-empty muted";
+    empty.textContent = t(lang, "predictions.no_results");
+    list.appendChild(empty);
+  }
+
+  for (const row of filtered) {
+    const card = document.createElement("article");
+    card.className = `pred-card ${cardRarityClass(row.unit.rareza)}`;
+
+    const head = document.createElement("div");
+    head.className = "pred-card-head";
+    if (row.unit.imagen) {
+      const img = document.createElement("img");
+      img.className = "pred-card-thumb";
+      img.src = assetUrl(row.unit.imagen);
+      img.alt = "";
+      head.appendChild(img);
+    }
+    const info = document.createElement("div");
+    info.className = "pred-card-info";
+    info.innerHTML = `
+      <span class="pred-card-name">${escapeHtml(unitDisplayName(row.unit))}</span>
+      <span class="pred-card-val">${escapeHtml(t(lang, "predictions.base_value"))}: <strong>${row.base.current}</strong></span>`;
+    head.appendChild(info);
+    head.appendChild(buildPredictionSparkline(row.sparkline));
+
+    const trends = document.createElement("div");
+    trends.className = "pred-card-trends";
+    trends.appendChild(buildPredictionTrendPill(row.base.trend, row.base.delta));
+    const v2 = row.votes.voto2;
+    if (v2) {
+      const votePill = buildPredictionTrendPill(
+        v2.trend,
+        v2.delta,
+        `${t(lang, "predictions.vote_label")} `,
+      );
+      votePill.classList.add("pred-trend--vote");
+      trends.appendChild(votePill);
+    }
+    const v13 = row.votes.voto13;
+    if (v13 && v13.current !== v2?.current) {
+      const votePill = buildPredictionTrendPill(
+        v13.trend,
+        v13.delta,
+        `${t(lang, "predictions.vote13_label")} `,
+      );
+      votePill.classList.add("pred-trend--vote");
+      trends.appendChild(votePill);
+    }
+
+    const tip = document.createElement("p");
+    tip.className = "pred-card-tip muted";
+    tip.textContent = t(lang, row.tipKey);
+
+    card.appendChild(head);
+    card.appendChild(trends);
+    card.appendChild(tip);
+    list.appendChild(card);
+  }
+
+  wrap.appendChild(list);
+  return wrap;
+}
+
 function buildCreditsView() {
   const d = document.createElement("div");
   d.className = "credits-box view-credits";
@@ -1903,6 +2133,7 @@ function currentRoute() {
   if (h.startsWith("/calc")) return "calc";
   if (h.startsWith("/trade")) return "trade";
   if (h.startsWith("/values")) return "values";
+  if (h.startsWith("/predictions")) return "predictions";
   if (h.startsWith("/scanner")) return "home";
   if (h.startsWith("/tester")) return "tester";
   if (h.startsWith("/credits")) return "credits";
@@ -1946,6 +2177,7 @@ function renderApp() {
     { r: "#/calc", k: "nav.calc", rr: "calc" },
     { r: "#/trade", k: "nav.trade", rr: "trade" },
     { r: "#/values", k: "nav.values", rr: "values" },
+    { r: "#/predictions", k: "nav.predictions", rr: "predictions" },
     ...(testerAccessAllowed()
       ? [{ r: "#/tester", k: "nav.tester", rr: "tester" }]
       : []),
@@ -1991,6 +2223,7 @@ function renderApp() {
   else if (route === "calc") main.appendChild(buildCalcView());
   else if (route === "trade") main.appendChild(buildTradeView());
   else if (route === "values") main.appendChild(buildValuesView());
+  else if (route === "predictions") main.appendChild(buildPredictionsView());
   else if (route === "tester") main.appendChild(buildTesterView());
   else main.appendChild(buildCreditsView());
 
@@ -2036,6 +2269,7 @@ async function bootstrap() {
   }
 
   syncTdMobileAttr();
+  valueHistory = recordValueSnapshot(units, vote_values);
   root.className = "app-ready";
   appBootstrapped = true;
   playPageIntro();
