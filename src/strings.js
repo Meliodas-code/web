@@ -134,6 +134,21 @@ export const I18N = {
       side_left: "(izquierda)",
       side_right: "(derecha)",
       value: "Valor",
+      suggest_toggle: "Sugerencias inteligentes",
+      suggest_hide: "Ocultar sugerencias",
+      suggest_need_more:
+        "Te faltan {gap} pts para igualar la oferta rival.",
+      suggest_fair: "El trade ya está equilibrado.",
+      suggest_winning: "Vas ganando por {gap} pts.",
+      suggest_empty_right:
+        "Añade unidades en la oferta rival para analizar el trade.",
+      suggest_receive: "Recibes unidades con demanda media {dem}/10.",
+      suggest_add:
+        "Añade {name} (+{val}) — quedarías a {remain} pts del rival",
+      suggest_add_pair:
+        "Añade {name1} + {name2} (+{val}) — quedarías a {remain} pts del rival",
+      suggest_worth: "Demanda {dem}/10 · {stability}",
+      suggest_apply: "Añadir",
     },
     demand: {
       fair: "Valor justo",
@@ -215,8 +230,8 @@ export const I18N = {
       subtitle: "Equipo y perfiles oficiales",
       badge: "Sorcerer TD Community",
       foot: "Si quieres aparecer aquí debes colaborar con nosotros",
-      role_creator: "Creador del proyecto",
-      role_idea_db: "Idea y base de datos",
+      role_creator: "Creador del proyecto y programador principal",
+      role_idea_db: "Idea, base de datos, tester y cofundador",
       role_tester_ideas: "Tester e ideas",
       open_discord: "Abrir Discord",
       open_roblox: "Abrir Roblox",
@@ -358,6 +373,20 @@ export const I18N = {
       side_left: "(left)",
       side_right: "(right)",
       value: "Value",
+      suggest_toggle: "Smart suggestions",
+      suggest_hide: "Hide suggestions",
+      suggest_need_more: "You need {gap} more pts to match the opponent offer.",
+      suggest_fair: "This trade is already balanced.",
+      suggest_winning: "You are ahead by {gap} pts.",
+      suggest_empty_right:
+        "Add units on the opponent side to analyze this trade.",
+      suggest_receive: "You receive units with average demand {dem}/10.",
+      suggest_add:
+        "Add {name} (+{val}) — you would be {remain} pts short of them",
+      suggest_add_pair:
+        "Add {name1} + {name2} (+{val}) — you would be {remain} pts short of them",
+      suggest_worth: "Demand {dem}/10 · {stability}",
+      suggest_apply: "Add",
     },
     demand: {
       fair: "Fair value",
@@ -439,8 +468,8 @@ export const I18N = {
       subtitle: "Team and official profiles",
       badge: "Sorcerer TD Community",
       foot: "If you want to appear here, you must collaborate with us.",
-      role_creator: "Project creator",
-      role_idea_db: "Idea and database",
+      role_creator: "Project creator and lead developer",
+      role_idea_db: "Idea, database, tester and co-founder",
       role_tester_ideas: "Tester & ideas",
       open_discord: "Open Discord",
       open_roblox: "Open Roblox",
