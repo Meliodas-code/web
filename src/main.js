@@ -21,12 +21,16 @@ import {
   sortPredictionRows,
   buildRarityBreakdown,
 } from "./predictions.js";
+import {
+  computeDemandValuation,
+  stabilityLabel,
+} from "./demand.js";
 
 /** Lista de valores oficial (Sorcerer TD Value list). */
 const OFFICIAL_VALUE_LIST_URL =
   "https://docs.google.com/spreadsheets/d/1--hVDdfHVSGLI1MF_Cmo0Te1Ir71KUxqnaqRX_CRCyI/htmlview?gid=0&pru=AAABnNPEMFQ*iMq033usqNrkyrEjGY0jeQ#gid=0";
 
-/** @typedef {{nombre:string,nombre_en:string,valor:number,imagen:string,rareza:string}} Unit */
+/** @typedef {{nombre:string,nombre_en:string,valor:number,imagen:string,rareza:string,demanda:number|null,estabilidad:import("./demand.js").StabilityId}} Unit */
 
 /** @type {Unit[]} */
 let units = [];
@@ -42,8 +46,8 @@ let predictionsFilter =
 /** @type {"score"|"rarity"|"delta"|"value"|"name"} */
 let predictionsSort =
   typeof localStorage !== "undefined"
-    ? localStorage.getItem("tdhub_pred_sort") || "score"
-    : "score";
+    ? localStorage.getItem("tdhub_pred_sort") || "value"
+    : "value";
 
 /** @type {"all" | string} */
 let predictionsRarityFilter =
@@ -310,6 +314,86 @@ function maybeRefocusToolbarSearch(route) {
 
 function unitDisplayName(u) {
   return lang === "en" ? u.nombre_en || u.nombre : u.nombre;
+}
+
+function unitDemandValuation(u) {
+  return computeDemandValuation(u.demanda, u.valor);
+}
+
+function formatDemandMargin(marginPct, marginAbs) {
+  const sign = marginPct > 0 ? "+" : "";
+  const pct = `${sign}${Math.round(marginPct)}%`;
+  if (!marginAbs) return pct;
+  const absSign = marginAbs > 0 ? "+" : "";
+  return `${pct} (${absSign}${marginAbs})`;
+}
+
+function buildDemandStatusPill(u, compact = false) {
+  const val = unitDemandValuation(u);
+  const pill = document.createElement("span");
+  pill.className = `demand-pill demand-pill--${val.status}`;
+  const label = t(lang, `demand.${val.status}`);
+  if (val.status === "unknown") {
+    pill.textContent = label;
+    pill.title = t(lang, "demand.hint_unknown");
+    return pill;
+  }
+  const marginTxt = formatDemandMargin(val.marginPct, val.marginAbs);
+  pill.textContent = compact ? label : `${label} · ${marginTxt}`;
+  pill.title = t(lang, `demand.hint_${val.status}`);
+  return pill;
+}
+
+function buildDemandScoreBadge(u) {
+  const badge = document.createElement("span");
+  badge.className = "demand-score";
+  const val = unitDemandValuation(u);
+  if (val.demanda === null) {
+    badge.textContent = "—";
+    badge.title = t(lang, "demand.hint_unknown");
+    return badge;
+  }
+  badge.textContent = `${val.demanda}/10`;
+  badge.title = `${t(lang, "demand.demand_score")}: ${val.demanda}/10`;
+  return badge;
+}
+
+function buildStabilityBadge(u) {
+  const badge = document.createElement("span");
+  const stability = u.estabilidad || "fluctuating";
+  badge.className = `demand-stability demand-stability--${stability}`;
+  badge.textContent = stabilityLabel(lang, stability, t);
+  return badge;
+}
+
+function buildUnitDemandRow(u, { compact = false } = {}) {
+  const row = document.createElement("div");
+  row.className = compact ? "unit-demand unit-demand--compact" : "unit-demand";
+  row.appendChild(buildDemandStatusPill(u, compact));
+  row.appendChild(buildDemandScoreBadge(u));
+  row.appendChild(buildStabilityBadge(u));
+  return row;
+}
+
+function buildValuesDemandCell(u) {
+  const td = document.createElement("td");
+  td.className = "values-cell-demand";
+  td.appendChild(buildDemandScoreBadge(u));
+  return td;
+}
+
+function buildValuesMarketCell(u) {
+  const td = document.createElement("td");
+  td.className = "values-cell-market";
+  td.appendChild(buildDemandStatusPill(u, true));
+  return td;
+}
+
+function buildValuesStabilityCell(u) {
+  const td = document.createElement("td");
+  td.className = "values-cell-stability";
+  td.appendChild(buildStabilityBadge(u));
+  return td;
 }
 
 function calcSumForUnit(nombre) {
@@ -903,6 +987,7 @@ function buildCalcView() {
     card.appendChild(face);
     card.appendChild(meta);
     card.appendChild(val);
+    card.appendChild(buildUnitDemandRow(u, { compact: true }));
     card.appendChild(ctl);
     grid.appendChild(card);
   }
@@ -982,6 +1067,7 @@ function buildTradeUnitCard(u, sideName) {
   card.appendChild(face);
   card.appendChild(meta);
   card.appendChild(val);
+  card.appendChild(buildUnitDemandRow(u, { compact: true }));
   card.appendChild(ctl);
   return card;
 }
@@ -1004,6 +1090,12 @@ function buildTradeHalf(sideName, filtered) {
   head.appendChild(sideTotal);
   col.appendChild(head);
 
+  const invCap = document.createElement("div");
+  invCap.className = "trade-inventory-caption muted";
+  invCap.textContent = t(lang, "trade.inventory_caption");
+  col.appendChild(invCap);
+  col.appendChild(buildTradeInventory(sideName));
+
   const cap = document.createElement("div");
   cap.className = "trade-picker-caption muted";
   cap.textContent = t(lang, "trade.picker_caption");
@@ -1017,12 +1109,6 @@ function buildTradeHalf(sideName, filtered) {
     gridWrap.appendChild(buildTradeUnitCard(u, sideName));
   }
   col.appendChild(gridWrap);
-
-  const invCap = document.createElement("div");
-  invCap.className = "trade-inventory-caption muted";
-  invCap.textContent = t(lang, "trade.inventory_caption");
-  col.appendChild(invCap);
-  col.appendChild(buildTradeInventory(sideName));
 
   return col;
 }
@@ -1092,7 +1178,6 @@ function buildTradeView() {
   sub.textContent = `${t(lang, "trade.left_tot")}: ${leftT} · ${t(lang, "trade.right_tot")}: ${rightT} · ${t(lang, "trade.diff")}: ${diff}`;
   scoreBox.appendChild(big);
   scoreBox.appendChild(sub);
-  scoreBox.appendChild(buildTradeCompareBar(leftT, rightT, diff));
 
   const grid = document.createElement("div");
   grid.className = "trade-shell";
@@ -1104,6 +1189,7 @@ function buildTradeView() {
   grid.appendChild(buildTradeHalf("left", filt));
   grid.appendChild(buildTradeHalf("right", filt));
   wrap.appendChild(grid);
+  wrap.appendChild(buildTradeCompareBar(leftT, rightT, diff));
   return wrap;
 }
 
@@ -1115,7 +1201,7 @@ function buildTradeCompareBar(leftT, rightT, diff) {
   const rightPct = total > 0 ? 100 - leftPct : 50;
 
   const wrap = document.createElement("div");
-  wrap.className = "trade-balance";
+  wrap.className = "trade-balance trade-balance--footer";
 
   const head = document.createElement("div");
   head.className = "trade-balance-head";
@@ -1709,6 +1795,9 @@ function buildValuesRarityColumn(rarityId, rarityUnits) {
     <thead><tr>
       <th>${escapeHtml(t(lang, "values.col_unit"))}</th>
       <th>${escapeHtml(t(lang, "values.col_base"))}</th>
+      <th>${escapeHtml(t(lang, "values.col_demand"))}</th>
+      <th>${escapeHtml(t(lang, "values.col_market"))}</th>
+      <th>${escapeHtml(t(lang, "values.col_stability"))}</th>
     </tr></thead>`;
 
   const tbody = document.createElement("tbody");
@@ -1720,6 +1809,9 @@ function buildValuesRarityColumn(rarityId, rarityUnits) {
     valTd.textContent = String(u.valor);
     tr.appendChild(buildValuesUnitCell(u));
     tr.appendChild(valTd);
+    tr.appendChild(buildValuesDemandCell(u));
+    tr.appendChild(buildValuesMarketCell(u));
+    tr.appendChild(buildValuesStabilityCell(u));
     tbody.appendChild(tr);
   }
 
@@ -1824,6 +1916,12 @@ function buildValuesView() {
     unitTh.className = "values-sticky-col";
     unitTh.textContent = t(lang, "values.col_unit");
     headRow.appendChild(unitTh);
+    for (const key of ["col_demand", "col_market", "col_stability"]) {
+      const th = document.createElement("th");
+      th.className = "values-demand-head";
+      th.textContent = t(lang, `values.${key}`);
+      headRow.appendChild(th);
+    }
     for (const vn of VOTE_DISPLAY_ORDER) {
       headRow.appendChild(buildVoteHeaderCell(vn));
     }
@@ -1835,6 +1933,9 @@ function buildValuesView() {
       const tr = document.createElement("tr");
       tr.className = cardRarityClass(u.rareza);
       tr.appendChild(buildValuesUnitCell(u, true));
+      tr.appendChild(buildValuesDemandCell(u));
+      tr.appendChild(buildValuesMarketCell(u));
+      tr.appendChild(buildValuesStabilityCell(u));
       const baseVal = Number(u.valor) || 0;
       for (const vn of VOTE_DISPLAY_ORDER) {
         const td = document.createElement("td");
@@ -2180,26 +2281,6 @@ function buildPredictionCard(row) {
   const trends = document.createElement("div");
   trends.className = "pred-card-trends";
   trends.appendChild(buildPredictionTrendPill(row.base.trend, row.base.delta));
-  const v2 = row.votes.voto2;
-  if (v2) {
-    const votePill = buildPredictionTrendPill(
-      v2.trend,
-      v2.delta,
-      `${t(lang, "predictions.vote_label")} `,
-    );
-    votePill.classList.add("pred-trend--vote");
-    trends.appendChild(votePill);
-  }
-  const v13 = row.votes.voto13;
-  if (v13 && v13.current !== v2?.current) {
-    const votePill = buildPredictionTrendPill(
-      v13.trend,
-      v13.delta,
-      `${t(lang, "predictions.vote13_label")} `,
-    );
-    votePill.classList.add("pred-trend--vote");
-    trends.appendChild(votePill);
-  }
 
   const tip = document.createElement("p");
   tip.className = "pred-card-tip muted";
