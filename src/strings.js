@@ -153,6 +153,17 @@ export const I18N = {
       suggest_rank: "Opción #{n}",
       suggest_match: "{pct}% coincidencia",
       suggest_pts_short: "Faltan {remain} pts",
+      inventory_open: "Mi inventario del juego",
+      inventory_title: "Unidades que tienes",
+      inventory_hint:
+        "Marca las unidades de tu inventario para recibir recomendaciones personalizadas.",
+      inventory_save: "Guardar inventario",
+      inventory_clear: "Limpiar selección",
+      inventory_search: "Buscar unidad…",
+      inventory_count: "{n} unidades seleccionadas",
+      suggest_from_owned: "Sugerencias según tu inventario ({n} unidades)",
+      suggest_no_owned:
+        "Ninguna unidad marcada encaja con el gap. Añade más en «Mi inventario del juego».",
     },
     demand: {
       fair: "Valor justo",
@@ -176,13 +187,15 @@ export const I18N = {
       search: "Buscar unidad…",
       units_heading: "Unidades y valor base",
       votes_heading: "Valores por voto",
-      votes_hint: "Cada columna muestra el valor de la unidad con ese tipo de voto.",
+      votes_hint:
+        "Solo votos que cambian el valor de cada unidad. HR y THO siempre visibles.",
       col_unit: "Unidad",
       col_rarity: "Rareza",
       col_base: "Valor base",
       col_demand: "Demanda",
       col_market: "Mercado",
       col_stability: "Estabilidad",
+      col_votes: "Votos compatibles",
       no_results: "No hay unidades que coincidan con el filtro.",
     },
     predictions: {
@@ -231,6 +244,7 @@ export const I18N = {
     },
     credits: {
       title: "CRÉDITOS",
+      kicker: "Hall of Fame",
       subtitle: "Equipo y perfiles oficiales",
       badge: "Sorcerer TD Community",
       foot: "Si quieres aparecer aquí debes colaborar con nosotros",
@@ -395,6 +409,17 @@ export const I18N = {
       suggest_rank: "Option #{n}",
       suggest_match: "{pct}% match",
       suggest_pts_short: "{remain} pts short",
+      inventory_open: "My in-game inventory",
+      inventory_title: "Units you own",
+      inventory_hint:
+        "Mark units from your inventory to get personalized trade suggestions.",
+      inventory_save: "Save inventory",
+      inventory_clear: "Clear selection",
+      inventory_search: "Search unit…",
+      inventory_count: "{n} units selected",
+      suggest_from_owned: "Suggestions from your inventory ({n} units)",
+      suggest_no_owned:
+        "No marked units fit the gap. Add more in «My in-game inventory».",
     },
     demand: {
       fair: "Fair value",
@@ -418,13 +443,15 @@ export const I18N = {
       search: "Search unit…",
       units_heading: "Units and base value",
       votes_heading: "Values per vote",
-      votes_hint: "Each column shows the unit value with that vote type.",
+      votes_hint:
+        "Only votes that change each unit's value. HR and THO are always shown.",
       col_unit: "Unit",
       col_rarity: "Rarity",
       col_base: "Base value",
       col_demand: "Demand",
       col_market: "Market",
       col_stability: "Stability",
+      col_votes: "Compatible votes",
       no_results: "No units match the current filter.",
     },
     predictions: {
@@ -473,6 +500,7 @@ export const I18N = {
     },
     credits: {
       title: "CREDITS",
+      kicker: "Hall of Fame",
       subtitle: "Team and official profiles",
       badge: "Sorcerer TD Community",
       foot: "If you want to appear here, you must collaborate with us.",
