@@ -3,6 +3,9 @@ import { t } from "./strings.js";
 /** Orden de columnas en tablas: Caster 2 justo después de Caster 1. */
 export const VOTE_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 10, 11, 12];
 
+/** HR (11) y THO (12) siempre visibles en la tabla de values. */
+export const ESSENTIAL_VOTE_NUMS = [11, 12];
+
 export function voteKey(num) {
   return `voto${num}`;
 }
