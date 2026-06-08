@@ -135,6 +135,21 @@ export const I18N = {
       side_right: "(derecha)",
       value: "Valor",
     },
+    demand: {
+      fair: "Valor justo",
+      overpay: "Overpay",
+      underpay: "Underpay",
+      unknown: "Sin datos",
+      margin: "margen est.",
+      demand_score: "Demanda",
+      stability_stable: "Estable",
+      stability_dropping: "Bajando",
+      stability_fluctuating: "Fluctuando",
+      hint_fair: "Se tradea cerca del valor base de la lista.",
+      hint_overpay: "Suele recibir ofertas por encima del valor base.",
+      hint_underpay: "Suele recibir ofertas por debajo del valor base.",
+      hint_unknown: "Aún no hay nota de demanda en la base de datos.",
+    },
     values: {
       title: "Tabla de valores",
       subtitle:
@@ -146,6 +161,9 @@ export const I18N = {
       col_unit: "Unidad",
       col_rarity: "Rareza",
       col_base: "Valor base",
+      col_demand: "Demanda",
+      col_market: "Mercado",
+      col_stability: "Estabilidad",
       no_results: "No hay unidades que coincidan con el filtro.",
     },
     predictions: {
@@ -340,6 +358,21 @@ export const I18N = {
       side_right: "(right)",
       value: "Value",
     },
+    demand: {
+      fair: "Fair value",
+      overpay: "Overpay",
+      underpay: "Underpay",
+      unknown: "No data",
+      margin: "est. margin",
+      demand_score: "Demand",
+      stability_stable: "Stable",
+      stability_dropping: "Dropping",
+      stability_fluctuating: "Fluctuating",
+      hint_fair: "Usually trades near the list base value.",
+      hint_overpay: "Often receives offers above base value.",
+      hint_underpay: "Often receives offers below base value.",
+      hint_unknown: "No demand score in the database yet.",
+    },
     values: {
       title: "Value tables",
       subtitle:
@@ -351,6 +384,9 @@ export const I18N = {
       col_unit: "Unit",
       col_rarity: "Rarity",
       col_base: "Base value",
+      col_demand: "Demand",
+      col_market: "Market",
+      col_stability: "Stability",
       no_results: "No units match the current filter.",
     },
     predictions: {
