@@ -3,6 +3,54 @@ import { normalizeStability, parseDemanda } from "../demand.js";
 /** Acepta voto1, Voto1, voto_1, voto-1, vote1, etc. */
 const VOTO_KEY = /^(?:voto|vote)[_\s-]?(\d{1,2})$/i;
 
+/** Nombres de columna en Supabase → número de voto (1–13). */
+const VOTE_NAME_ALIASES = {
+  novote: 1,
+  sinvoto: 1,
+  stengh: 2,
+  strength: 2,
+  fuerza: 2,
+  velocidad: 3,
+  speed: 3,
+  scope: 4,
+  alcance: 4,
+  summoner: 5,
+  fortune: 6,
+  fortuna: 6,
+  power: 7,
+  poder: 7,
+  rapid: 8,
+  rapido: 8,
+  caster1: 9,
+  eficiencia: 10,
+  efficiency: 10,
+  hr: 11,
+  tho: 12,
+  honoredone: 12,
+  caster2: 13,
+};
+
+function normVoteColKey(k) {
+  return String(k || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[\s_\-.]+/g, "");
+}
+
+/** @returns {number | null} */
+function voteNumFromColumnKey(k0) {
+  const k = normalizeRowKey(k0);
+  const m = VOTO_KEY.exec(k);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    return n >= 1 && n <= 13 ? n : null;
+  }
+  const alias = VOTE_NAME_ALIASES[normVoteColKey(k)];
+  return alias !== undefined ? alias : null;
+}
+
 function normName(name) {
   return String(name || "")
     .trim()
@@ -60,9 +108,9 @@ function getVoteRowUnitLabel(row, keyCandidates) {
 function votesFromUnitRow(row, baseVal) {
   const votes = {};
   for (const [k0, v] of Object.entries(row || {})) {
-    const m = VOTO_KEY.exec(normalizeRowKey(k0));
+    const vn = voteNumFromColumnKey(k0);
     const n = asVoteNumber(v);
-    if (m && n !== null) votes[`voto${parseInt(m[1], 10)}`] = n;
+    if (vn !== null && n !== null) votes[`voto${vn}`] = n;
   }
   const b = Number(baseVal) || 0;
   for (let i = 1; i < 13; i++) {
@@ -78,10 +126,9 @@ function mergeVoteRow(existing, voteRow) {
   const out = { ...(existing || {}) };
   for (const [k0, v] of Object.entries(voteRow || {})) {
     if (k0 === "unit_name" || k0 === "id") continue;
-    const k = normalizeRowKey(k0);
-    const m = VOTO_KEY.exec(k);
+    const vn = voteNumFromColumnKey(k0);
     const n = asVoteNumber(v);
-    if (m && n !== null) out[`voto${parseInt(m[1], 10)}`] = n;
+    if (vn !== null && n !== null) out[`voto${vn}`] = n;
   }
   const base = out.voto2 !== undefined ? out.voto2 : out.voto1 !== undefined ? out.voto1 : 0;
   for (let i = 1; i < 13; i++) {
