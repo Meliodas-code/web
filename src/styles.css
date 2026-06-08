@@ -829,44 +829,6 @@ main.content {
   gap: 0.22rem;
 }
 
-.demand-pill {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  padding: 0.14rem 0.42rem;
-  border-radius: 999px;
-  font-size: 0.62rem;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
-  border: 1px solid transparent;
-  white-space: nowrap;
-}
-
-.demand-pill--fair {
-  color: #fde68a;
-  background: rgba(250, 204, 21, 0.12);
-  border-color: rgba(250, 204, 21, 0.28);
-}
-
-.demand-pill--overpay {
-  color: #86efac;
-  background: rgba(52, 211, 153, 0.12);
-  border-color: rgba(52, 211, 153, 0.28);
-}
-
-.demand-pill--underpay {
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.12);
-  border-color: rgba(248, 113, 113, 0.28);
-}
-
-.demand-pill--unknown {
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.04);
-  border-color: var(--border);
-}
-
 .demand-score {
   display: inline-flex;
   align-items: center;
@@ -911,7 +873,6 @@ main.content {
 }
 
 .values-cell-demand,
-.values-cell-market,
 .values-cell-stability {
   white-space: nowrap;
   vertical-align: middle;
@@ -1859,7 +1820,7 @@ main.content {
 
 .view-trade > .trade-balance {
   margin-top: 0;
-  margin-bottom: 0.25rem;
+  margin-bottom: 1rem;
 }
 
 .trade-balance {
@@ -2846,6 +2807,14 @@ html[data-td-mobile="1"] .trade-inv-slot-vote {
 
 .credits-card.toro {
   box-shadow: var(--shadow-card), 0 0 26px rgba(232, 93, 84, 0.14);
+}
+
+.credits-card.acex {
+  box-shadow: var(--shadow-card), 0 0 26px rgba(167, 139, 250, 0.16);
+}
+
+.credits-card.acex .credits-avatar {
+  background: linear-gradient(145deg, #8b5cf6, #6d28d9);
 }
 
 .credits-avatar {
