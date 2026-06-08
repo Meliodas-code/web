@@ -118,6 +118,7 @@ let calcRarityFilter =
     : "all";
 
 /** @type {"all" | string} */
+let tradeSuggestionsOpen = false;
 let tradeRarityFilter =
   typeof localStorage !== "undefined"
     ? readRarityFilter("tdhub_trade_rarity")
@@ -421,6 +422,183 @@ function tradeSideTotal(countsMap) {
     }
   }
   return total;
+}
+
+function unitBaseTradeValue(u) {
+  return voteValueForUnit(u, "voto1");
+}
+
+function avgDemandOfSide(countsMap) {
+  let sum = 0;
+  let n = 0;
+  for (const u of units) {
+    const m = countsMap[u.nombre];
+    if (!m) continue;
+    const qty = Object.values(m).reduce((a, b) => a + Math.max(0, b || 0), 0);
+    if (qty <= 0 || u.demanda === null || u.demanda === undefined) continue;
+    sum += u.demanda * qty;
+    n += qty;
+  }
+  return n > 0 ? sum / n : null;
+}
+
+function scoreTradeSuggestionUnit(u, gap) {
+  const val = unitBaseTradeValue(u);
+  const closeness = -Math.abs(val - gap);
+  const demand = u.demanda ?? 5;
+  const stabBonus =
+    u.estabilidad === "stable" ? 4 : u.estabilidad === "dropping" ? -2 : 0;
+  return closeness * 3 + (11 - demand) + stabBonus;
+}
+
+/** @returns {Array<{type:"single"|"pair", units:Unit[], totalVal:number, remain:number}>} */
+function findTradeSuggestions(gap) {
+  if (gap <= 0) return [];
+
+  const ranked = [...units]
+    .map((u) => ({
+      u,
+      val: unitBaseTradeValue(u),
+      score: scoreTradeSuggestionUnit(u, gap),
+    }))
+    .filter((c) => c.val > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const singles = ranked.slice(0, 4).map((c) => ({
+    type: /** @type {"single"} */ ("single"),
+    units: [c.u],
+    totalVal: c.val,
+    remain: Math.abs(gap - c.val),
+  }));
+
+  const pairs = [];
+  const pool = ranked.slice(0, 45);
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i + 1; j < pool.length; j++) {
+      const totalVal = pool[i].val + pool[j].val;
+      const remain = Math.abs(gap - totalVal);
+      if (remain > Math.max(20, gap * 0.3)) continue;
+      pairs.push({
+        type: /** @type {"pair"} */ ("pair"),
+        units: [pool[i].u, pool[j].u],
+        totalVal,
+        remain,
+      });
+    }
+  }
+  pairs.sort((a, b) => a.remain - b.remain);
+
+  const out = [...singles];
+  for (const p of pairs.slice(0, 2)) {
+    if (!out.some((s) => s.type === "pair" && s.remain <= p.remain + 3)) {
+      out.push(p);
+    }
+  }
+  return out.sort((a, b) => a.remain - b.remain).slice(0, 5);
+}
+
+function applyTradeSuggestion(suggestionUnits) {
+  for (const u of suggestionUnits) {
+    adjustTradeVotes("left", u.nombre, "voto1", 1);
+  }
+  renderApp();
+}
+
+function buildTradeSuggestionsPanel(leftT, rightT) {
+  const panel = document.createElement("section");
+  panel.className = "trade-suggestions";
+
+  const head = document.createElement("div");
+  head.className = "trade-suggestions-head";
+  const title = document.createElement("h4");
+  title.textContent = t(lang, "trade.suggest_toggle");
+  head.appendChild(title);
+  panel.appendChild(head);
+
+  const rightHasUnits = Object.keys(tradeRightCounts).some((nombre) => {
+    const m = tradeRightCounts[nombre];
+    return m && Object.values(m).some((c) => (c || 0) > 0);
+  });
+
+  const gap = rightT - leftT;
+  const intro = document.createElement("p");
+  intro.className = "muted";
+  if (!rightHasUnits) {
+    intro.textContent = t(lang, "trade.suggest_empty_right");
+    panel.appendChild(intro);
+    return panel;
+  }
+  if (gap <= 0) {
+    intro.textContent =
+      gap === 0
+        ? t(lang, "trade.suggest_fair")
+        : t(lang, "trade.suggest_winning", { gap: Math.abs(gap) });
+    panel.appendChild(intro);
+    return panel;
+  }
+
+  intro.textContent = t(lang, "trade.suggest_need_more", { gap });
+  panel.appendChild(intro);
+
+  const avgDem = avgDemandOfSide(tradeRightCounts);
+  if (avgDem !== null) {
+    const recv = document.createElement("p");
+    recv.className = "muted";
+    recv.textContent = t(lang, "trade.suggest_receive", {
+      dem: avgDem.toFixed(1),
+    });
+    panel.appendChild(recv);
+  }
+
+  const list = document.createElement("div");
+  list.className = "trade-suggestions-list";
+  const suggestions = findTradeSuggestions(gap);
+
+  for (const sug of suggestions) {
+    const item = document.createElement("div");
+    item.className = "trade-suggest-item";
+
+    const copy = document.createElement("div");
+    copy.className = "trade-suggest-copy";
+    const mainLine = document.createElement("div");
+    if (sug.type === "pair") {
+      mainLine.textContent = t(lang, "trade.suggest_add_pair", {
+        name1: unitDisplayName(sug.units[0]),
+        name2: unitDisplayName(sug.units[1]),
+        val: sug.totalVal,
+        remain: sug.remain,
+      });
+    } else {
+      mainLine.textContent = t(lang, "trade.suggest_add", {
+        name: unitDisplayName(sug.units[0]),
+        val: sug.totalVal,
+        remain: sug.remain,
+      });
+    }
+    copy.appendChild(mainLine);
+
+    const lead = sug.units[0];
+    const meta = document.createElement("div");
+    meta.className = "trade-suggest-meta";
+    meta.textContent = t(lang, "trade.suggest_worth", {
+      dem: lead.demanda ?? "—",
+      stability: stabilityLabel(lang, lead.estabilidad || "fluctuating", t),
+    });
+    copy.appendChild(meta);
+
+    const applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.className = "trade-suggest-apply";
+    applyBtn.textContent = t(lang, "trade.suggest_apply");
+    applyBtn.onclick = () => applyTradeSuggestion(sug.units);
+
+    item.appendChild(copy);
+    item.appendChild(applyBtn);
+    list.appendChild(item);
+  }
+
+  panel.appendChild(list);
+  return panel;
 }
 
 function pickActiveVote(existingMap, lastMap, nombre, fallbackFirst = "voto1") {
@@ -1013,6 +1191,7 @@ function buildTradeUnitCard(u, sideName) {
   name.className = "unit-name";
   name.textContent = unitDisplayName(u);
   meta.appendChild(name);
+  if (u.rareza) meta.appendChild(buildRarityBadge(u.rareza));
 
   const val = document.createElement("div");
   val.className = "unit-value";
@@ -1115,6 +1294,17 @@ function buildTradeView() {
     renderApp();
   });
 
+  const suggestBtn = document.createElement("button");
+  suggestBtn.type = "button";
+  suggestBtn.className = "toolbar-btn-suggest";
+  suggestBtn.textContent = tradeSuggestionsOpen
+    ? t(lang, "trade.suggest_hide")
+    : t(lang, "trade.suggest_toggle");
+  suggestBtn.onclick = () => {
+    tradeSuggestionsOpen = !tradeSuggestionsOpen;
+    renderApp();
+  };
+
   const clearBtn = document.createElement("button");
   clearBtn.type = "button";
   clearBtn.className = "toolbar-btn-clear";
@@ -1129,6 +1319,7 @@ function buildTradeView() {
   };
 
   tb.appendChild(inp);
+  tb.appendChild(suggestBtn);
   tb.appendChild(clearBtn);
 
   const leftT = tradeSideTotal(tradeLeftCounts);
@@ -1141,6 +1332,9 @@ function buildTradeView() {
 
   wrap.appendChild(tb);
   wrap.appendChild(buildTradeCompareBar(leftT, rightT, diff));
+  if (tradeSuggestionsOpen) {
+    wrap.appendChild(buildTradeSuggestionsPanel(leftT, rightT));
+  }
   wrap.appendChild(buildRarityFilterBar("trade"));
   grid.appendChild(buildTradeHalf("left", filt));
   grid.appendChild(buildTradeHalf("right", filt));
