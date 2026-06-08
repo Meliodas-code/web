@@ -149,6 +149,10 @@ export const I18N = {
         "Añade {name1} + {name2} (+{val}) — quedarías a {remain} pts del rival",
       suggest_worth: "Demanda {dem}/10 · {stability}",
       suggest_apply: "Añadir",
+      suggest_best: "Mejor opción",
+      suggest_rank: "Opción #{n}",
+      suggest_match: "{pct}% coincidencia",
+      suggest_pts_short: "Faltan {remain} pts",
     },
     demand: {
       fair: "Valor justo",
@@ -387,6 +391,10 @@ export const I18N = {
         "Add {name1} + {name2} (+{val}) — you would be {remain} pts short of them",
       suggest_worth: "Demand {dem}/10 · {stability}",
       suggest_apply: "Add",
+      suggest_best: "Best pick",
+      suggest_rank: "Option #{n}",
+      suggest_match: "{pct}% match",
+      suggest_pts_short: "{remain} pts short",
     },
     demand: {
       fair: "Fair value",
