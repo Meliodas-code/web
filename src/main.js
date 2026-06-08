@@ -376,6 +376,13 @@ function buildValuesStabilityCell(u) {
   return td;
 }
 
+function buildValuesBaseValueCell(u) {
+  const td = document.createElement("td");
+  td.className = "values-cell-num values-cell-base";
+  td.textContent = String(Number(u.valor) || 0);
+  return td;
+}
+
 function calcSumForUnit(nombre) {
   const m = calcSelections[nombre];
   if (!m) return 0;
@@ -423,6 +430,27 @@ function compatibleVotesForUnit(u) {
     if (ESSENTIAL_VOTE_NUMS.includes(vn)) return true;
     return voteValueForUnit(u, voteKey(vn)) !== baseVal;
   });
+}
+
+/** Agrupa votos compatibles por valor único (mantiene orden de display). */
+function uniqueVoteEntriesForUnit(u) {
+  const applicable = compatibleVotesForUnit(u);
+  /** @type {Map<number, number[]>} */
+  const byValue = new Map();
+  for (const vn of applicable) {
+    const v = voteValueForUnit(u, voteKey(vn));
+    if (!byValue.has(v)) byValue.set(v, []);
+    byValue.get(v).push(vn);
+  }
+  const seen = new Set();
+  const out = [];
+  for (const vn of applicable) {
+    const v = voteValueForUnit(u, voteKey(vn));
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push({ value: v, voteNums: byValue.get(v) || [vn] });
+  }
+  return out;
 }
 
 function calcGrandTotal() {
@@ -2151,29 +2179,36 @@ function buildValuesVotePillsCell(u) {
   td.className = "values-cell-votes";
   const wrap = document.createElement("div");
   wrap.className = "values-vote-pills";
-  const applicable = compatibleVotesForUnit(u);
   const baseVal = Number(u.valor) || 0;
 
-  for (const vn of applicable) {
-    const v = voteValueForUnit(u, voteKey(vn));
+  for (const entry of uniqueVoteEntriesForUnit(u)) {
+    const { value: v, voteNums } = entry;
+    const primaryVn = voteNums[0];
+    const labels = voteNums.map((vn) => voteDisplayLabel(lang, vn));
     const pill = document.createElement("span");
     pill.className = [
       "values-vote-pill",
       v !== baseVal ? "values-vote-pill--diff" : "",
-      ESSENTIAL_VOTE_NUMS.includes(vn) ? "values-vote-pill--essential" : "",
+      voteNums.some((vn) => ESSENTIAL_VOTE_NUMS.includes(vn))
+        ? "values-vote-pill--essential"
+        : "",
+      voteNums.length > 1 ? "values-vote-pill--multi" : "",
     ]
       .filter(Boolean)
       .join(" ");
-    pill.title = voteDisplayLabel(lang, vn);
+    pill.title = labels.join(" · ");
 
     const img = document.createElement("img");
-    img.src = assetUrl(`assets/votos/voto${vn}.png`);
+    img.src = assetUrl(`assets/votos/voto${primaryVn}.png`);
     img.alt = "";
     img.onerror = () => img.remove();
 
     const lbl = document.createElement("span");
     lbl.className = "values-vote-pill-label";
-    lbl.textContent = voteDisplayLabel(lang, vn);
+    lbl.textContent =
+      voteNums.length > 1
+        ? `${labels[0]} +${voteNums.length - 1}`
+        : labels[0];
 
     const val = document.createElement("b");
     val.textContent = String(v);
@@ -2186,74 +2221,6 @@ function buildValuesVotePillsCell(u) {
 
   td.appendChild(wrap);
   return td;
-}
-
-function buildValuesRarityColumn(rarityId, rarityUnits) {
-  const col = document.createElement("div");
-  col.className = `values-rarity-col ${cardRarityClass(rarityId)}`;
-
-  const head = document.createElement("div");
-  head.className = "values-rarity-col-head";
-  head.appendChild(buildRarityBadge(rarityId));
-
-  const tableWrap = document.createElement("div");
-  tableWrap.className = "values-rarity-col-body";
-  const table = document.createElement("table");
-  table.className = "values-table values-table--units-compact";
-  table.innerHTML = `
-    <thead><tr>
-      <th>${escapeHtml(t(lang, "values.col_unit"))}</th>
-      <th>${escapeHtml(t(lang, "values.col_base"))}</th>
-      <th>${escapeHtml(t(lang, "values.col_demand"))}</th>
-      <th>${escapeHtml(t(lang, "values.col_stability"))}</th>
-    </tr></thead>`;
-
-  const tbody = document.createElement("tbody");
-  for (const u of rarityUnits) {
-    const tr = document.createElement("tr");
-    tr.className = cardRarityClass(u.rareza);
-    const valTd = document.createElement("td");
-    valTd.className = "values-cell-num";
-    valTd.textContent = String(u.valor);
-    tr.appendChild(buildValuesUnitCell(u));
-    tr.appendChild(valTd);
-    tr.appendChild(buildValuesDemandCell(u));
-    tr.appendChild(buildValuesStabilityCell(u));
-    tbody.appendChild(tr);
-  }
-
-  table.appendChild(tbody);
-  tableWrap.appendChild(table);
-  col.appendChild(head);
-  col.appendChild(tableWrap);
-  return col;
-}
-
-function buildValuesUnitsGrid(filtered) {
-  const grid = document.createElement("div");
-  grid.className = "values-rarity-grid";
-
-  /** @type {Map<string, typeof filtered>} */
-  const byRarity = new Map();
-  for (const u of filtered) {
-    const key = normalizeRarity(u.rareza) || "other";
-    if (!byRarity.has(key)) byRarity.set(key, []);
-    byRarity.get(key).push(u);
-  }
-
-  const order = [
-    ...RARITY_IDS_DESC.filter((id) => byRarity.has(id)),
-    ...[...byRarity.keys()].filter((id) => !RARITY_IDS_DESC.includes(id)),
-  ];
-
-  for (const rarityId of order) {
-    const list = byRarity.get(rarityId);
-    if (!list?.length) continue;
-    list.sort(compareUnits);
-    grid.appendChild(buildValuesRarityColumn(rarityId, list));
-  }
-
-  return grid;
 }
 
 function buildValuesView() {
@@ -2282,37 +2249,29 @@ function buildValuesView() {
   wrap.appendChild(tb);
   wrap.appendChild(buildRarityFilterBar("values"));
 
-  const filtered = getFilteredUnits(q, valuesRarityFilter);
+  const filtered = [...getFilteredUnits(q, valuesRarityFilter)].sort(compareUnits);
 
-  const unitsSection = document.createElement("section");
-  unitsSection.className = "values-section";
-  const unitsHead = document.createElement("h3");
-  unitsHead.className = "values-section-title";
-  unitsHead.textContent = t(lang, "values.units_heading");
-  unitsSection.appendChild(unitsHead);
+  const tableSection = document.createElement("section");
+  tableSection.className = "values-section";
+  const tableHint = document.createElement("p");
+  tableHint.className = "values-section-hint muted";
+  tableHint.textContent = t(lang, "values.votes_hint");
+  tableSection.appendChild(tableHint);
 
   if (!filtered.length) {
     const empty = document.createElement("p");
     empty.className = "values-empty muted";
     empty.textContent = t(lang, "values.no_results");
-    unitsSection.appendChild(empty);
+    tableSection.appendChild(empty);
   } else {
-    unitsSection.appendChild(buildValuesUnitsGrid(filtered));
-  }
-  wrap.appendChild(unitsSection);
+    const countNote = document.createElement("p");
+    countNote.className = "values-count-note muted";
+    countNote.textContent = t(lang, "values.showing_count", {
+      shown: filtered.length,
+      total: units.length,
+    });
+    tableSection.appendChild(countNote);
 
-  const votesSection = document.createElement("section");
-  votesSection.className = "values-section";
-  const votesHead = document.createElement("h3");
-  votesHead.className = "values-section-title";
-  votesHead.textContent = t(lang, "values.votes_heading");
-  const votesHint = document.createElement("p");
-  votesHint.className = "values-section-hint muted";
-  votesHint.textContent = t(lang, "values.votes_hint");
-  votesSection.appendChild(votesHead);
-  votesSection.appendChild(votesHint);
-
-  if (filtered.length) {
     const votesWrap = document.createElement("div");
     votesWrap.className = "values-table-wrap values-table-wrap--wide";
     const votesTable = document.createElement("table");
@@ -2323,9 +2282,14 @@ function buildValuesView() {
     unitTh.className = "values-sticky-col";
     unitTh.textContent = t(lang, "values.col_unit");
     headRow.appendChild(unitTh);
-    for (const key of ["col_demand", "col_stability", "col_votes"]) {
+    for (const key of ["col_base", "col_demand", "col_stability", "col_votes"]) {
       const th = document.createElement("th");
-      th.className = key === "col_votes" ? "values-votes-col-head" : "values-demand-head";
+      th.className =
+        key === "col_votes"
+          ? "values-votes-col-head"
+          : key === "col_base"
+            ? "values-base-head"
+            : "values-demand-head";
       th.textContent = t(lang, `values.${key}`);
       headRow.appendChild(th);
     }
@@ -2337,6 +2301,7 @@ function buildValuesView() {
       const tr = document.createElement("tr");
       tr.className = cardRarityClass(u.rareza);
       tr.appendChild(buildValuesUnitCell(u, true));
+      tr.appendChild(buildValuesBaseValueCell(u));
       tr.appendChild(buildValuesDemandCell(u));
       tr.appendChild(buildValuesStabilityCell(u));
       tr.appendChild(buildValuesVotePillsCell(u));
@@ -2344,9 +2309,9 @@ function buildValuesView() {
     }
     votesTable.appendChild(voteBody);
     votesWrap.appendChild(votesTable);
-    votesSection.appendChild(votesWrap);
+    tableSection.appendChild(votesWrap);
   }
-  wrap.appendChild(votesSection);
+  wrap.appendChild(tableSection);
 
   return wrap;
 }
@@ -2926,7 +2891,35 @@ function buildCreditsView() {
   header.appendChild(title);
   header.appendChild(intro);
   header.appendChild(badge);
+
+  const version = document.createElement("span");
+  version.className = "credits-version";
+  version.textContent = t(lang, "credits.version");
+  header.appendChild(version);
+
+  const features = document.createElement("div");
+  features.className = "credits-features";
+  const featureItems = [
+    { k: "credits.feature_calc", r: "#/calc" },
+    { k: "credits.feature_trade", r: "#/trade" },
+    { k: "credits.feature_values", r: "#/values" },
+    { k: "credits.feature_predictions", r: "#/predictions" },
+  ];
+  featureItems.forEach((item, i) => {
+    const chip = document.createElement("a");
+    chip.className = "credits-feature-chip";
+    chip.href = item.r;
+    chip.style.setProperty("--chip-i", String(i));
+    chip.textContent = t(lang, item.k);
+    features.appendChild(chip);
+  });
+  header.appendChild(features);
   d.appendChild(header);
+
+  const divider = document.createElement("div");
+  divider.className = "credits-divider";
+  divider.setAttribute("aria-hidden", "true");
+  d.appendChild(divider);
 
   const grid = document.createElement("div");
   grid.className = "credits-grid";
@@ -3000,6 +2993,39 @@ function buildCreditsView() {
     grid.appendChild(card);
   });
   d.appendChild(grid);
+
+  const thanks = document.createElement("section");
+  thanks.className = "credits-thanks";
+  const thanksTitle = document.createElement("h3");
+  thanksTitle.className = "credits-thanks-title";
+  thanksTitle.textContent = t(lang, "credits.thanks_title");
+  thanks.appendChild(thanksTitle);
+
+  const thanksList = document.createElement("ul");
+  thanksList.className = "credits-thanks-list";
+  const thanksItems = [
+    { k: "credits.thanks_value_list", href: OFFICIAL_VALUE_LIST_URL, external: true },
+    { k: "credits.thanks_community" },
+    { k: "credits.thanks_roblox" },
+  ];
+  thanksItems.forEach((item) => {
+    const li = document.createElement("li");
+    if (item.href) {
+      const a = document.createElement("a");
+      a.href = item.href;
+      a.textContent = t(lang, item.k);
+      if (item.external) {
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+      }
+      li.appendChild(a);
+    } else {
+      li.textContent = t(lang, item.k);
+    }
+    thanksList.appendChild(li);
+  });
+  thanks.appendChild(thanksList);
+  d.appendChild(thanks);
 
   const foot = document.createElement("p");
   foot.className = "muted credits-foot";
