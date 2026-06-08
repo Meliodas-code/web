@@ -21,10 +21,7 @@ import {
   sortPredictionRows,
   buildRarityBreakdown,
 } from "./predictions.js";
-import {
-  computeDemandValuation,
-  stabilityLabel,
-} from "./demand.js";
+import { stabilityLabel } from "./demand.js";
 
 /** Lista de valores oficial (Sorcerer TD Value list). */
 const OFFICIAL_VALUE_LIST_URL =
@@ -169,6 +166,15 @@ const CREDITS_PROFILES = [
     avatar: "assets/toropapita.jpg",
     discordUrl: "https://discord.com/app",
     robloxUrl: "https://www.roblox.com/es/users/1202005376/profile",
+  },
+  {
+    roleKey: "credits.role_tester_ideas",
+    handle: "@acexx01",
+    initials: "AC",
+    accent: "acex",
+    avatar: "assets/acexx01.jpg",
+    discordUrl: "https://discord.com/app",
+    robloxUrl: "https://www.roblox.com/",
   },
 ];
 
@@ -316,45 +322,16 @@ function unitDisplayName(u) {
   return lang === "en" ? u.nombre_en || u.nombre : u.nombre;
 }
 
-function unitDemandValuation(u) {
-  return computeDemandValuation(u.demanda, u.valor);
-}
-
-function formatDemandMargin(marginPct, marginAbs) {
-  const sign = marginPct > 0 ? "+" : "";
-  const pct = `${sign}${Math.round(marginPct)}%`;
-  if (!marginAbs) return pct;
-  const absSign = marginAbs > 0 ? "+" : "";
-  return `${pct} (${absSign}${marginAbs})`;
-}
-
-function buildDemandStatusPill(u, compact = false) {
-  const val = unitDemandValuation(u);
-  const pill = document.createElement("span");
-  pill.className = `demand-pill demand-pill--${val.status}`;
-  const label = t(lang, `demand.${val.status}`);
-  if (val.status === "unknown") {
-    pill.textContent = label;
-    pill.title = t(lang, "demand.hint_unknown");
-    return pill;
-  }
-  const marginTxt = formatDemandMargin(val.marginPct, val.marginAbs);
-  pill.textContent = compact ? label : `${label} · ${marginTxt}`;
-  pill.title = t(lang, `demand.hint_${val.status}`);
-  return pill;
-}
-
 function buildDemandScoreBadge(u) {
   const badge = document.createElement("span");
   badge.className = "demand-score";
-  const val = unitDemandValuation(u);
-  if (val.demanda === null) {
+  if (u.demanda === null || u.demanda === undefined) {
     badge.textContent = "—";
     badge.title = t(lang, "demand.hint_unknown");
     return badge;
   }
-  badge.textContent = `${val.demanda}/10`;
-  badge.title = `${t(lang, "demand.demand_score")}: ${val.demanda}/10`;
+  badge.textContent = `${u.demanda}/10`;
+  badge.title = `${t(lang, "demand.demand_score")}: ${u.demanda}/10`;
   return badge;
 }
 
@@ -369,7 +346,6 @@ function buildStabilityBadge(u) {
 function buildUnitDemandRow(u, { compact = false } = {}) {
   const row = document.createElement("div");
   row.className = compact ? "unit-demand unit-demand--compact" : "unit-demand";
-  row.appendChild(buildDemandStatusPill(u, compact));
   row.appendChild(buildDemandScoreBadge(u));
   row.appendChild(buildStabilityBadge(u));
   return row;
@@ -379,13 +355,6 @@ function buildValuesDemandCell(u) {
   const td = document.createElement("td");
   td.className = "values-cell-demand";
   td.appendChild(buildDemandScoreBadge(u));
-  return td;
-}
-
-function buildValuesMarketCell(u) {
-  const td = document.createElement("td");
-  td.className = "values-cell-market";
-  td.appendChild(buildDemandStatusPill(u, true));
   return td;
 }
 
@@ -416,6 +385,16 @@ function voteValueForUnit(unit, voteKey) {
     return uv.voto13 ?? uv.voto2 ?? baseVal;
   }
   return uv[voteKey] ?? baseVal;
+}
+
+/** Votos que alteran el valor base en al menos una unidad del listado. */
+function voteColumnsWithChanges(unitList) {
+  return VOTE_DISPLAY_ORDER.filter((vn) => {
+    const vk = voteKey(vn);
+    return unitList.some(
+      (u) => voteValueForUnit(u, vk) !== (Number(u.valor) || 0),
+    );
+  });
 }
 
 function calcGrandTotal() {
@@ -1156,40 +1135,16 @@ function buildTradeView() {
   const rightT = tradeSideTotal(tradeRightCounts);
   const diff = Math.abs(leftT - rightT);
 
-  let verdict = t(lang, "trade.fair");
-  let verdictClass = "trade-score--fair";
-  if (diff > 50) {
-    if (leftT > rightT) {
-      verdict = t(lang, "trade.win_left");
-      verdictClass = "trade-score--win-left";
-    } else {
-      verdict = t(lang, "trade.win_right");
-      verdictClass = "trade-score--win-right";
-    }
-  }
-
-  const scoreBox = document.createElement("div");
-  scoreBox.className = `trade-score ${verdictClass}`;
-  const big = document.createElement("div");
-  big.className = "big";
-  big.textContent = `${verdict} · ${leftT} vs ${rightT}`;
-  const sub = document.createElement("div");
-  sub.className = "trade-score-sub muted";
-  sub.textContent = `${t(lang, "trade.left_tot")}: ${leftT} · ${t(lang, "trade.right_tot")}: ${rightT} · ${t(lang, "trade.diff")}: ${diff}`;
-  scoreBox.appendChild(big);
-  scoreBox.appendChild(sub);
-
   const grid = document.createElement("div");
   grid.className = "trade-shell";
   const filt = getFilteredUnits(q, tradeRarityFilter);
 
   wrap.appendChild(tb);
-  wrap.appendChild(scoreBox);
+  wrap.appendChild(buildTradeCompareBar(leftT, rightT, diff));
   wrap.appendChild(buildRarityFilterBar("trade"));
   grid.appendChild(buildTradeHalf("left", filt));
   grid.appendChild(buildTradeHalf("right", filt));
   wrap.appendChild(grid);
-  wrap.appendChild(buildTradeCompareBar(leftT, rightT, diff));
   return wrap;
 }
 
@@ -1796,7 +1751,6 @@ function buildValuesRarityColumn(rarityId, rarityUnits) {
       <th>${escapeHtml(t(lang, "values.col_unit"))}</th>
       <th>${escapeHtml(t(lang, "values.col_base"))}</th>
       <th>${escapeHtml(t(lang, "values.col_demand"))}</th>
-      <th>${escapeHtml(t(lang, "values.col_market"))}</th>
       <th>${escapeHtml(t(lang, "values.col_stability"))}</th>
     </tr></thead>`;
 
@@ -1810,7 +1764,6 @@ function buildValuesRarityColumn(rarityId, rarityUnits) {
     tr.appendChild(buildValuesUnitCell(u));
     tr.appendChild(valTd);
     tr.appendChild(buildValuesDemandCell(u));
-    tr.appendChild(buildValuesMarketCell(u));
     tr.appendChild(buildValuesStabilityCell(u));
     tbody.appendChild(tr);
   }
@@ -1906,6 +1859,7 @@ function buildValuesView() {
   votesSection.appendChild(votesHint);
 
   if (filtered.length) {
+    const activeVotes = voteColumnsWithChanges(filtered);
     const votesWrap = document.createElement("div");
     votesWrap.className = "values-table-wrap values-table-wrap--wide";
     const votesTable = document.createElement("table");
@@ -1916,13 +1870,13 @@ function buildValuesView() {
     unitTh.className = "values-sticky-col";
     unitTh.textContent = t(lang, "values.col_unit");
     headRow.appendChild(unitTh);
-    for (const key of ["col_demand", "col_market", "col_stability"]) {
+    for (const key of ["col_demand", "col_stability"]) {
       const th = document.createElement("th");
       th.className = "values-demand-head";
       th.textContent = t(lang, `values.${key}`);
       headRow.appendChild(th);
     }
-    for (const vn of VOTE_DISPLAY_ORDER) {
+    for (const vn of activeVotes) {
       headRow.appendChild(buildVoteHeaderCell(vn));
     }
     voteHead.appendChild(headRow);
@@ -1934,10 +1888,9 @@ function buildValuesView() {
       tr.className = cardRarityClass(u.rareza);
       tr.appendChild(buildValuesUnitCell(u, true));
       tr.appendChild(buildValuesDemandCell(u));
-      tr.appendChild(buildValuesMarketCell(u));
       tr.appendChild(buildValuesStabilityCell(u));
       const baseVal = Number(u.valor) || 0;
-      for (const vn of VOTE_DISPLAY_ORDER) {
+      for (const vn of activeVotes) {
         const td = document.createElement("td");
         const v = voteValueForUnit(u, voteKey(vn));
         td.className =
