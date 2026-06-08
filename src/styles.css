@@ -676,6 +676,35 @@ main.content {
   transform: scale(0.98);
 }
 
+.toolbar-btn-suggest {
+  flex: 0 1 auto;
+  padding: 0.62rem 1.05rem;
+  border-radius: 11px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: linear-gradient(
+    165deg,
+    rgba(52, 211, 153, 0.16) 0%,
+    rgba(16, 80, 60, 0.35) 100%
+  );
+  color: #d1fae5;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.87rem;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(52, 211, 153, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: filter var(--transition-fast), transform var(--transition-fast);
+}
+
+.toolbar-btn-suggest:hover {
+  filter: brightness(1.08);
+}
+
+.toolbar-btn-suggest:active {
+  transform: scale(0.98);
+}
+
 .toolbar-btn-calc-clear {
   flex: 0 1 auto;
   padding: 0.62rem 1.05rem;
@@ -803,6 +832,12 @@ main.content {
 .unit-meta {
   text-align: center;
   width: 100%;
+  min-height: 3.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.2rem;
 }
 
 .unit-value {
@@ -821,6 +856,7 @@ main.content {
   justify-content: center;
   gap: 0.28rem;
   width: 100%;
+  min-height: 1.55rem;
   margin: 0 0 0.35rem;
   padding: 0 0.15rem;
 }
@@ -904,6 +940,7 @@ main.content {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: 1rem;
+  align-items: stretch;
 }
 
 .unit-card {
@@ -913,6 +950,7 @@ main.content {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  height: 100%;
   border: 1px solid var(--border-strong);
   background: linear-gradient(
       168deg,
@@ -1077,7 +1115,12 @@ main.content {
 }
 
 .badge {
-  min-width: 30px;
+  min-width: 2rem;
+  height: 1.65rem;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   background: linear-gradient(
     165deg,
@@ -1086,10 +1129,11 @@ main.content {
   );
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: #fff;
-  padding: 0.28rem 0.45rem;
+  padding: 0.28rem 0.2rem;
   border-radius: 9px;
   font-weight: 800;
   font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
@@ -1599,12 +1643,12 @@ main.content {
   grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
   gap: 0.65rem;
   align-content: start;
-  align-items: start;
+  align-items: stretch;
 }
 
 .trade-unit-card {
-  align-self: start;
-  height: auto;
+  align-self: stretch;
+  height: 100%;
   padding: 0.45rem 0.42rem 0.5rem;
 }
 
@@ -1635,7 +1679,7 @@ main.content {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 0;
+  min-height: 2.5em;
 }
 
 .trade-unit-card .unit-value {
@@ -1649,10 +1693,84 @@ main.content {
 }
 
 .trade-unit-card .controls button {
-  width: 38px;
-  height: 34px;
-  font-size: 1.05rem;
-  border-radius: 9px;
+  width: 44px;
+  height: 32px;
+  font-size: 1rem;
+  border-radius: 8px;
+}
+
+.trade-suggestions {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(52, 211, 153, 0.22);
+  background: linear-gradient(
+    165deg,
+    rgba(52, 211, 153, 0.08),
+    rgba(255, 255, 255, 0.02) 55%
+  );
+}
+
+.trade-suggestions-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.trade-suggestions-head h4 {
+  margin: 0;
+  font-size: 0.92rem;
+  letter-spacing: -0.02em;
+}
+
+.trade-suggestions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.trade-suggest-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.trade-suggest-copy {
+  flex: 1 1 12rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.trade-suggest-meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
+.trade-suggest-apply {
+  flex-shrink: 0;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.14);
+  color: #a7f3d0;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.trade-suggest-apply:hover {
+  filter: brightness(1.08);
 }
 
 .trade-col.left .trade-col-head h3 {
