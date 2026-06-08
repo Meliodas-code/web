@@ -442,16 +442,27 @@ function avgDemandOfSide(countsMap) {
   return n > 0 ? sum / n : null;
 }
 
-function scoreTradeSuggestionUnit(u, gap) {
-  const val = unitBaseTradeValue(u);
-  const closeness = -Math.abs(val - gap);
-  const demand = u.demanda ?? 5;
-  const stabBonus =
-    u.estabilidad === "stable" ? 4 : u.estabilidad === "dropping" ? -2 : 0;
-  return closeness * 3 + (11 - demand) + stabBonus;
+function scoreTradeSuggestion(gap, totalVal, suggestionUnits) {
+  const remain = Math.abs(gap - totalVal);
+  const matchPct = Math.max(0, Math.min(100, Math.round(100 - (remain / gap) * 100)));
+  let score = matchPct * 2.5;
+  if (remain <= 5) score += 30;
+  else if (remain <= 15) score += 18;
+  else if (remain <= 30) score += 8;
+
+  for (const u of suggestionUnits) {
+    const val = unitBaseTradeValue(u);
+    const demand = u.demanda ?? 5;
+    score += (10 - demand) * 2.2;
+    if (u.estabilidad === "stable") score += 10;
+    else if (u.estabilidad === "dropping") score -= 8;
+    if (val > gap * 1.35) score -= 12;
+    if (val < gap * 0.45) score -= 6;
+  }
+  return { score, matchPct, remain };
 }
 
-/** @returns {Array<{type:"single"|"pair", units:Unit[], totalVal:number, remain:number}>} */
+/** @returns {Array<{type:"single"|"pair", units:Unit[], totalVal:number, remain:number, matchPct:number, score:number}>} */
 function findTradeSuggestions(gap) {
   if (gap <= 0) return [];
 
@@ -459,42 +470,65 @@ function findTradeSuggestions(gap) {
     .map((u) => ({
       u,
       val: unitBaseTradeValue(u),
-      score: scoreTradeSuggestionUnit(u, gap),
     }))
-    .filter((c) => c.val > 0)
-    .sort((a, b) => b.score - a.score);
+    .filter((c) => c.val > 0);
 
-  const singles = ranked.slice(0, 4).map((c) => ({
-    type: /** @type {"single"} */ ("single"),
-    units: [c.u],
-    totalVal: c.val,
-    remain: Math.abs(gap - c.val),
-  }));
+  const singles = ranked.map((c) => {
+    const scored = scoreTradeSuggestion(gap, c.val, [c.u]);
+    return {
+      type: /** @type {"single"} */ ("single"),
+      units: [c.u],
+      totalVal: c.val,
+      remain: scored.remain,
+      matchPct: scored.matchPct,
+      score: scored.score,
+    };
+  });
 
   const pairs = [];
-  const pool = ranked.slice(0, 45);
+  const pool = [...ranked].sort(
+    (a, b) =>
+      scoreTradeSuggestion(gap, b.val, [b.u]).score -
+      scoreTradeSuggestion(gap, a.val, [a.u]).score,
+  ).slice(0, 50);
   for (let i = 0; i < pool.length; i++) {
     for (let j = i + 1; j < pool.length; j++) {
       const totalVal = pool[i].val + pool[j].val;
-      const remain = Math.abs(gap - totalVal);
-      if (remain > Math.max(20, gap * 0.3)) continue;
+      const units = [pool[i].u, pool[j].u];
+      const scored = scoreTradeSuggestion(gap, totalVal, units);
+      if (scored.remain > Math.max(18, gap * 0.28)) continue;
       pairs.push({
         type: /** @type {"pair"} */ ("pair"),
-        units: [pool[i].u, pool[j].u],
+        units,
         totalVal,
-        remain,
+        remain: scored.remain,
+        matchPct: scored.matchPct,
+        score: scored.score,
       });
     }
   }
-  pairs.sort((a, b) => a.remain - b.remain);
 
-  const out = [...singles];
-  for (const p of pairs.slice(0, 2)) {
-    if (!out.some((s) => s.type === "pair" && s.remain <= p.remain + 3)) {
-      out.push(p);
-    }
-  }
-  return out.sort((a, b) => a.remain - b.remain).slice(0, 5);
+  const merged = [...singles, ...pairs]
+    .sort((a, b) => b.score - a.score || a.remain - b.remain)
+    .filter((sug, idx, arr) => {
+      const key = sug.units.map((u) => u.nombre).join("+");
+      return (
+        arr.findIndex((x) => x.units.map((u) => u.nombre).join("+") === key) ===
+        idx
+      );
+    });
+
+  return merged.slice(0, 5);
+}
+
+function buildSuggestUnitThumb(u, { small = false } = {}) {
+  const wrap = document.createElement("div");
+  wrap.className = `trade-suggest-thumb ${cardRarityClass(u.rareza)}${small ? " trade-suggest-thumb--sm" : ""}`.trim();
+  const img = document.createElement("img");
+  img.src = u.imagen ? assetUrl(u.imagen) : "";
+  img.alt = unitDisplayName(u);
+  wrap.appendChild(img);
+  return wrap;
 }
 
 function applyTradeSuggestion(suggestionUnits) {
@@ -512,6 +546,10 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
   head.className = "trade-suggestions-head";
   const title = document.createElement("h4");
   title.textContent = t(lang, "trade.suggest_toggle");
+  const spark = document.createElement("span");
+  spark.className = "trade-suggestions-spark";
+  spark.textContent = "✦";
+  head.appendChild(spark);
   head.appendChild(title);
   panel.appendChild(head);
 
@@ -521,29 +559,29 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
   });
 
   const gap = rightT - leftT;
-  const intro = document.createElement("p");
-  intro.className = "muted";
+  const status = document.createElement("div");
+  status.className = "trade-suggestions-status";
   if (!rightHasUnits) {
-    intro.textContent = t(lang, "trade.suggest_empty_right");
-    panel.appendChild(intro);
+    status.textContent = t(lang, "trade.suggest_empty_right");
+    panel.appendChild(status);
     return panel;
   }
   if (gap <= 0) {
-    intro.textContent =
+    status.textContent =
       gap === 0
         ? t(lang, "trade.suggest_fair")
         : t(lang, "trade.suggest_winning", { gap: Math.abs(gap) });
-    panel.appendChild(intro);
+    panel.appendChild(status);
     return panel;
   }
 
-  intro.textContent = t(lang, "trade.suggest_need_more", { gap });
-  panel.appendChild(intro);
+  status.innerHTML = `<strong>${escapeHtml(t(lang, "trade.suggest_need_more", { gap }))}</strong>`;
+  panel.appendChild(status);
 
   const avgDem = avgDemandOfSide(tradeRightCounts);
   if (avgDem !== null) {
     const recv = document.createElement("p");
-    recv.className = "muted";
+    recv.className = "trade-suggestions-recv muted";
     recv.textContent = t(lang, "trade.suggest_receive", {
       dem: avgDem.toFixed(1),
     });
@@ -554,37 +592,67 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
   list.className = "trade-suggestions-list";
   const suggestions = findTradeSuggestions(gap);
 
-  for (const sug of suggestions) {
-    const item = document.createElement("div");
-    item.className = "trade-suggest-item";
+  suggestions.forEach((sug, idx) => {
+    const item = document.createElement("article");
+    item.className = `trade-suggest-card ${cardRarityClass(sug.units[0].rareza)}`.trim();
 
-    const copy = document.createElement("div");
-    copy.className = "trade-suggest-copy";
-    const mainLine = document.createElement("div");
-    if (sug.type === "pair") {
-      mainLine.textContent = t(lang, "trade.suggest_add_pair", {
-        name1: unitDisplayName(sug.units[0]),
-        name2: unitDisplayName(sug.units[1]),
-        val: sug.totalVal,
-        remain: sug.remain,
-      });
-    } else {
-      mainLine.textContent = t(lang, "trade.suggest_add", {
-        name: unitDisplayName(sug.units[0]),
-        val: sug.totalVal,
-        remain: sug.remain,
-      });
+    const rank = document.createElement("span");
+    rank.className = "trade-suggest-rank";
+    rank.textContent =
+      idx === 0
+        ? t(lang, "trade.suggest_best")
+        : t(lang, "trade.suggest_rank", { n: idx + 1 });
+
+    const visuals = document.createElement("div");
+    visuals.className = "trade-suggest-visuals";
+    for (const u of sug.units) {
+      visuals.appendChild(buildSuggestUnitThumb(u, { small: sug.type === "pair" }));
     }
-    copy.appendChild(mainLine);
 
-    const lead = sug.units[0];
-    const meta = document.createElement("div");
-    meta.className = "trade-suggest-meta";
-    meta.textContent = t(lang, "trade.suggest_worth", {
-      dem: lead.demanda ?? "—",
-      stability: stabilityLabel(lang, lead.estabilidad || "fluctuating", t),
+    const body = document.createElement("div");
+    body.className = "trade-suggest-body";
+
+    const names = document.createElement("div");
+    names.className = "trade-suggest-names";
+    names.textContent = sug.units.map((u) => unitDisplayName(u)).join(" + ");
+
+    const chips = document.createElement("div");
+    chips.className = "trade-suggest-chips";
+    const valChip = document.createElement("span");
+    valChip.className = "trade-suggest-chip trade-suggest-chip--val";
+    valChip.textContent = `+${sug.totalVal}`;
+    chips.appendChild(valChip);
+
+    const remainChip = document.createElement("span");
+    remainChip.className = "trade-suggest-chip trade-suggest-chip--gap";
+    remainChip.textContent = t(lang, "trade.suggest_pts_short", {
+      remain: sug.remain,
     });
-    copy.appendChild(meta);
+    chips.appendChild(remainChip);
+
+    for (const u of sug.units) {
+      const demChip = document.createElement("span");
+      demChip.className = "trade-suggest-chip trade-suggest-chip--dem";
+      demChip.textContent = `${u.demanda ?? "—"}/10`;
+      demChip.title = stabilityLabel(lang, u.estabilidad || "fluctuating", t);
+      chips.appendChild(demChip);
+    }
+
+    const meter = document.createElement("div");
+    meter.className = "trade-suggest-meter";
+    meter.title = t(lang, "trade.suggest_match", { pct: sug.matchPct });
+    const fill = document.createElement("div");
+    fill.className = "trade-suggest-meter-fill";
+    fill.style.width = `${sug.matchPct}%`;
+    meter.appendChild(fill);
+    const meterLbl = document.createElement("span");
+    meterLbl.className = "trade-suggest-meter-label";
+    meterLbl.textContent = t(lang, "trade.suggest_match", { pct: sug.matchPct });
+    meter.appendChild(meterLbl);
+
+    body.appendChild(names);
+    body.appendChild(chips);
+    body.appendChild(meter);
 
     const applyBtn = document.createElement("button");
     applyBtn.type = "button";
@@ -592,10 +660,12 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
     applyBtn.textContent = t(lang, "trade.suggest_apply");
     applyBtn.onclick = () => applyTradeSuggestion(sug.units);
 
-    item.appendChild(copy);
+    item.appendChild(rank);
+    item.appendChild(visuals);
+    item.appendChild(body);
     item.appendChild(applyBtn);
     list.appendChild(item);
-  }
+  });
 
   panel.appendChild(list);
   return panel;
@@ -812,22 +882,22 @@ function buildVoteLines(u) {
     }
   }
 
-  for (let i = 1; i <= 13; i++) {
-    const vk = `voto${i}`;
+  for (const vn of VOTE_DISPLAY_ORDER) {
+    const vk = voteKey(vn);
     const val = voteValueForUnit(u, vk);
     const row = document.createElement("div");
     row.className = "vote-line";
 
     const img = document.createElement("img");
-    img.alt = vk;
-    img.src = assetUrl(`assets/votos/voto${i}.png`);
+    img.alt = voteDisplayLabel(lang, vn);
+    img.src = assetUrl(`assets/votos/voto${vn}.png`);
     img.onerror = () => {
-      img.replaceWith(document.createTextNode(`V${i}`));
+      img.replaceWith(document.createTextNode(`V${vn}`));
     };
 
     const info = document.createElement("span");
     info.className = "val-info";
-    info.textContent = `${t(lang, "trade.value")}: ${val}`;
+    info.textContent = `${voteDisplayLabel(lang, vn)} · ${t(lang, "trade.value")}: ${val}`;
 
     const btnMinus = document.createElement("button");
     btnMinus.className = "minus";
@@ -1077,7 +1147,7 @@ function buildCalcView() {
   for (const u of getFilteredUnits(q, calcRarityFilter)) {
     const sum = calcSumForUnit(u.nombre);
     const card = document.createElement("div");
-    card.className = `unit-card ${cardRarityClass(u.rareza)}`.trim();
+    card.className = `unit-card unit-card--square ${cardRarityClass(u.rareza)}`.trim();
 
     const head = document.createElement("div");
     head.className = "unit-card-head";
@@ -1159,7 +1229,7 @@ function buildTradeUnitCard(u, sideName) {
   const sum = tradeSumForUnit(sideName, u.nombre);
 
   const card = document.createElement("div");
-  card.className = `unit-card trade-unit-card ${cardRarityClass(u.rareza)}`.trim();
+  card.className = `unit-card unit-card--square trade-unit-card ${cardRarityClass(u.rareza)}`.trim();
 
   const head = document.createElement("div");
   head.className = "unit-card-head";
@@ -1278,21 +1348,8 @@ function buildTradeView() {
 
   wrap.appendChild(buildPageHeader("trade.title", "trade.subtitle"));
 
-  const tb = document.createElement("div");
-  tb.className = "toolbar";
-  const inp = document.createElement("input");
-  inp.type = "text";
-  inp.setAttribute("data-td-search", "trade");
-  inp.placeholder = t(lang, "trade.search");
-  inp.value = q;
-  inp.autocomplete = "off";
-  inp.spellcheck = false;
-  inp.inputMode = "search";
-  inp.addEventListener("input", () => {
-    lastSearchTrade = inp.value;
-    pendingToolbarFocusRoute = "trade";
-    renderApp();
-  });
+  const actionTb = document.createElement("div");
+  actionTb.className = "toolbar toolbar--trade-actions";
 
   const suggestBtn = document.createElement("button");
   suggestBtn.type = "button";
@@ -1318,20 +1375,37 @@ function buildTradeView() {
     renderApp();
   };
 
-  tb.appendChild(inp);
-  tb.appendChild(suggestBtn);
-  tb.appendChild(clearBtn);
+  actionTb.appendChild(suggestBtn);
+  actionTb.appendChild(clearBtn);
 
   const leftT = tradeSideTotal(tradeLeftCounts);
   const rightT = tradeSideTotal(tradeRightCounts);
   const diff = Math.abs(leftT - rightT);
 
+  const searchTb = document.createElement("div");
+  searchTb.className = "toolbar toolbar--trade-search";
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.setAttribute("data-td-search", "trade");
+  inp.placeholder = t(lang, "trade.search");
+  inp.value = q;
+  inp.autocomplete = "off";
+  inp.spellcheck = false;
+  inp.inputMode = "search";
+  inp.addEventListener("input", () => {
+    lastSearchTrade = inp.value;
+    pendingToolbarFocusRoute = "trade";
+    renderApp();
+  });
+  searchTb.appendChild(inp);
+
   const grid = document.createElement("div");
   grid.className = "trade-shell";
   const filt = getFilteredUnits(q, tradeRarityFilter);
 
-  wrap.appendChild(tb);
+  wrap.appendChild(actionTb);
   wrap.appendChild(buildTradeCompareBar(leftT, rightT, diff));
+  wrap.appendChild(searchTb);
   if (tradeSuggestionsOpen) {
     wrap.appendChild(buildTradeSuggestionsPanel(leftT, rightT));
   }
@@ -2616,24 +2690,50 @@ function buildPredictionsView() {
 }
 
 function buildCreditsView() {
-  const d = document.createElement("div");
-  d.className = "credits-box view-credits";
-  d.innerHTML = `<h2 style="margin-top:0">${escapeHtml(t(lang, "credits.title"))}</h2>`;
+  const stage = document.createElement("div");
+  stage.className = "credits-stage view-credits";
 
+  const glowA = document.createElement("div");
+  glowA.className = "credits-glow credits-glow--a";
+  glowA.setAttribute("aria-hidden", "true");
+  const glowB = document.createElement("div");
+  glowB.className = "credits-glow credits-glow--b";
+  glowB.setAttribute("aria-hidden", "true");
+  const spotlight = document.createElement("div");
+  spotlight.className = "credits-spotlight";
+  spotlight.setAttribute("aria-hidden", "true");
+  stage.appendChild(glowA);
+  stage.appendChild(glowB);
+  stage.appendChild(spotlight);
+
+  const d = document.createElement("div");
+  d.className = "credits-box";
+
+  const header = document.createElement("header");
+  header.className = "credits-header";
+  const title = document.createElement("h2");
+  title.textContent = t(lang, "credits.title");
   const intro = document.createElement("p");
-  intro.className = "muted";
+  intro.className = "credits-intro muted";
   intro.textContent = t(lang, "credits.subtitle");
-  d.appendChild(intro);
-  const badge = document.createElement("p");
+  const badge = document.createElement("span");
   badge.className = "credits-badge";
   badge.textContent = t(lang, "credits.badge");
-  d.appendChild(badge);
+  header.appendChild(title);
+  header.appendChild(intro);
+  header.appendChild(badge);
+  d.appendChild(header);
 
   const grid = document.createElement("div");
   grid.className = "credits-grid";
   for (const m of CREDITS_PROFILES) {
     const card = document.createElement("article");
-    card.className = `credits-card ${m.accent}`;
+    card.className = `credits-card credits-card--portrait ${m.accent}`;
+
+    const ring = document.createElement("div");
+    ring.className = "credits-card-ring";
+    ring.setAttribute("aria-hidden", "true");
+
     const avatarWrap = document.createElement("div");
     avatarWrap.className = "credits-avatar";
     const avatarImg = document.createElement("img");
@@ -2650,12 +2750,13 @@ function buildCreditsView() {
 
     const meta = document.createElement("div");
     meta.className = "credits-meta";
-    meta.innerHTML = `
-      <h3>${escapeHtml(m.handle)}</h3>
-      <p class="muted">${escapeHtml(t(lang, m.roleKey))}</p>
-    `;
-    card.appendChild(avatarWrap);
-    card.appendChild(meta);
+    const handle = document.createElement("h3");
+    handle.textContent = m.handle;
+    const role = document.createElement("p");
+    role.className = "credits-role";
+    role.textContent = t(lang, m.roleKey);
+    meta.appendChild(handle);
+    meta.appendChild(role);
 
     const actions = document.createElement("div");
     actions.className = "credits-actions";
@@ -2671,15 +2772,21 @@ function buildCreditsView() {
     rBtn.textContent = t(lang, "credits.open_roblox");
     actions.appendChild(dBtn);
     actions.appendChild(rBtn);
+
+    card.appendChild(ring);
+    card.appendChild(avatarWrap);
+    card.appendChild(meta);
     card.appendChild(actions);
     grid.appendChild(card);
   }
   d.appendChild(grid);
+
   const foot = document.createElement("p");
   foot.className = "muted credits-foot";
   foot.textContent = t(lang, "credits.foot");
   d.appendChild(foot);
-  return d;
+  stage.appendChild(d);
+  return stage;
 }
 
 function currentRoute() {
