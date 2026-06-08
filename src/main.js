@@ -1147,7 +1147,7 @@ function buildCalcView() {
   for (const u of getFilteredUnits(q, calcRarityFilter)) {
     const sum = calcSumForUnit(u.nombre);
     const card = document.createElement("div");
-    card.className = `unit-card unit-card--square ${cardRarityClass(u.rareza)}`.trim();
+    card.className = `unit-card ${cardRarityClass(u.rareza)}`.trim();
 
     const head = document.createElement("div");
     head.className = "unit-card-head";
@@ -1229,7 +1229,7 @@ function buildTradeUnitCard(u, sideName) {
   const sum = tradeSumForUnit(sideName, u.nombre);
 
   const card = document.createElement("div");
-  card.className = `unit-card unit-card--square trade-unit-card ${cardRarityClass(u.rareza)}`.trim();
+  card.className = `unit-card trade-unit-card ${cardRarityClass(u.rareza)}`.trim();
 
   const head = document.createElement("div");
   head.className = "unit-card-head";
@@ -2693,18 +2693,36 @@ function buildCreditsView() {
   const stage = document.createElement("div");
   stage.className = "credits-stage view-credits";
 
+  const aurora = document.createElement("div");
+  aurora.className = "credits-aurora";
+  aurora.setAttribute("aria-hidden", "true");
   const glowA = document.createElement("div");
   glowA.className = "credits-glow credits-glow--a";
   glowA.setAttribute("aria-hidden", "true");
   const glowB = document.createElement("div");
   glowB.className = "credits-glow credits-glow--b";
   glowB.setAttribute("aria-hidden", "true");
+  const glowC = document.createElement("div");
+  glowC.className = "credits-glow credits-glow--c";
+  glowC.setAttribute("aria-hidden", "true");
   const spotlight = document.createElement("div");
   spotlight.className = "credits-spotlight";
   spotlight.setAttribute("aria-hidden", "true");
+  const particles = document.createElement("div");
+  particles.className = "credits-particles";
+  particles.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 18; i++) {
+    const p = document.createElement("span");
+    p.className = "credits-particle";
+    p.style.setProperty("--i", String(i));
+    particles.appendChild(p);
+  }
+  stage.appendChild(aurora);
   stage.appendChild(glowA);
   stage.appendChild(glowB);
+  stage.appendChild(glowC);
   stage.appendChild(spotlight);
+  stage.appendChild(particles);
 
   const d = document.createElement("div");
   d.className = "credits-box";
@@ -2730,6 +2748,13 @@ function buildCreditsView() {
     const card = document.createElement("article");
     card.className = `credits-card credits-card--portrait ${m.accent}`;
 
+    const avatarFrame = document.createElement("div");
+    avatarFrame.className = "credits-avatar-frame";
+
+    const ringSpin = document.createElement("div");
+    ringSpin.className = "credits-ring-spin";
+    ringSpin.setAttribute("aria-hidden", "true");
+
     const ring = document.createElement("div");
     ring.className = "credits-card-ring";
     ring.setAttribute("aria-hidden", "true");
@@ -2747,6 +2772,10 @@ function buildCreditsView() {
     });
     avatarWrap.appendChild(avatarImg);
     avatarWrap.appendChild(avatarFallback);
+
+    avatarFrame.appendChild(ringSpin);
+    avatarFrame.appendChild(ring);
+    avatarFrame.appendChild(avatarWrap);
 
     const meta = document.createElement("div");
     meta.className = "credits-meta";
@@ -2773,8 +2802,7 @@ function buildCreditsView() {
     actions.appendChild(dBtn);
     actions.appendChild(rBtn);
 
-    card.appendChild(ring);
-    card.appendChild(avatarWrap);
+    card.appendChild(avatarFrame);
     card.appendChild(meta);
     card.appendChild(actions);
     grid.appendChild(card);
