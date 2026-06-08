@@ -122,9 +122,25 @@ let calcRarityFilter =
     ? readRarityFilter("tdhub_calc_rarity")
     : "all";
 
-/** @type {"all" | string} */
-let tradeSuggestionsOpen = false;
 const OWNED_UNITS_STORAGE = "tdhub_owned_units";
+const TRADE_SUGGEST_OPEN_KEY = "tdhub_trade_suggest_open";
+
+function readTradeSuggestionsOpen() {
+  if (typeof localStorage === "undefined") return false;
+  const saved = localStorage.getItem(TRADE_SUGGEST_OPEN_KEY);
+  if (saved === "1") return true;
+  if (saved === "0") return false;
+  try {
+    const raw = localStorage.getItem(OWNED_UNITS_STORAGE);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) && arr.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** @type {"all" | string} */
+let tradeSuggestionsOpen = readTradeSuggestionsOpen();
 /** @type {Set<string>} */
 let tradeOwnedUnits = loadOwnedUnits();
 /** @type {HTMLDialogElement | null} */
@@ -417,10 +433,16 @@ function loadOwnedUnits() {
 }
 
 function saveOwnedUnits() {
+  if (typeof localStorage === "undefined") return;
   localStorage.setItem(
     OWNED_UNITS_STORAGE,
     JSON.stringify([...tradeOwnedUnits]),
   );
+}
+
+function resetTradeOwnedInventory() {
+  tradeOwnedUnits = new Set();
+  saveOwnedUnits();
 }
 
 /** Votos compatibles con una unidad: cambian el valor o son HR/THO. */
@@ -641,6 +663,8 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
     btn.onclick = () => {
       if (draft.has(u.nombre)) draft.delete(u.nombre);
       else draft.add(u.nombre);
+      tradeOwnedUnits = new Set(draft);
+      saveOwnedUnits();
       renderTradeInventoryDialogBody(draft, inp.value);
     };
     grid.appendChild(btn);
@@ -657,6 +681,7 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
   saveBtn.textContent = t(lang, "trade.inventory_save");
   clearBtn.onclick = () => {
     draft.clear();
+    resetTradeOwnedInventory();
     renderTradeInventoryDialogBody(draft, inp.value);
   };
   saveBtn.onclick = () => {
@@ -707,6 +732,9 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
   titleWrap.appendChild(spark);
   titleWrap.appendChild(title);
 
+  const invActions = document.createElement("div");
+  invActions.className = "trade-inventory-actions";
+
   const invBtn = document.createElement("button");
   invBtn.type = "button";
   invBtn.className = "trade-inventory-open-btn";
@@ -715,12 +743,39 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
     invBtn.title = t(lang, "trade.suggest_from_owned", {
       n: tradeOwnedUnits.size,
     });
+    const badge = document.createElement("span");
+    badge.className = "trade-inventory-open-badge";
+    badge.textContent = String(tradeOwnedUnits.size);
+    invBtn.appendChild(badge);
   }
   invBtn.onclick = () => openTradeInventoryDialog();
 
+  const resetInvBtn = document.createElement("button");
+  resetInvBtn.type = "button";
+  resetInvBtn.className = "trade-inventory-reset-btn";
+  resetInvBtn.textContent = t(lang, "trade.inventory_reset");
+  resetInvBtn.disabled = tradeOwnedUnits.size === 0;
+  resetInvBtn.title = t(lang, "trade.inventory_reset_hint");
+  resetInvBtn.onclick = () => {
+    resetTradeOwnedInventory();
+    renderApp();
+  };
+
+  invActions.appendChild(invBtn);
+  invActions.appendChild(resetInvBtn);
+
   head.appendChild(titleWrap);
-  head.appendChild(invBtn);
+  head.appendChild(invActions);
   panel.appendChild(head);
+
+  if (tradeOwnedUnits.size > 0) {
+    const savedNote = document.createElement("p");
+    savedNote.className = "trade-inventory-saved muted";
+    savedNote.textContent = t(lang, "trade.inventory_saved", {
+      n: tradeOwnedUnits.size,
+    });
+    panel.appendChild(savedNote);
+  }
 
   const rightHasUnits = Object.keys(tradeRightCounts).some((nombre) => {
     const m = tradeRightCounts[nombre];
@@ -1546,6 +1601,12 @@ function buildTradeView() {
     : t(lang, "trade.suggest_toggle");
   suggestBtn.onclick = () => {
     tradeSuggestionsOpen = !tradeSuggestionsOpen;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(
+        TRADE_SUGGEST_OPEN_KEY,
+        tradeSuggestionsOpen ? "1" : "0",
+      );
+    }
     renderApp();
   };
 
@@ -2207,7 +2268,7 @@ function buildValuesVotePillsCell(u) {
     lbl.className = "values-vote-pill-label";
     lbl.textContent =
       voteNums.length > 1
-        ? `${labels[0]} +${voteNums.length - 1}`
+        ? t(lang, "values.vote_incompatibles")
         : labels[0];
 
     const val = document.createElement("b");
