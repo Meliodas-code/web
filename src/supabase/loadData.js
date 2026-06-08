@@ -1,3 +1,5 @@
+import { normalizeStability, parseDemanda } from "../demand.js";
+
 /** Acepta voto1, Voto1, voto_1, voto-1, vote1, etc. */
 const VOTO_KEY = /^(?:voto|vote)[_\s-]?(\d{1,2})$/i;
 
@@ -124,7 +126,7 @@ export async function loadUnitsAndVotes() {
 
   /** @type {Record<string, Record<string, number>>} */
   const vote_values = {};
-  /** @type {Array<{nombre:string,nombre_en:string,valor:number,imagen:string,rareza:string}>} */
+  /** @type {Array<{nombre:string,nombre_en:string,valor:number,imagen:string,rareza:string,demanda:number|null,estabilidad:import("../demand.js").StabilityId}>} */
   const units_out = [];
 
   const unitNameCol = getFirstPresentKey(rows[0] || {}, [
@@ -148,6 +150,8 @@ export async function loadUnitsAndVotes() {
       valor,
       imagen: row.imagen || "",
       rareza: String(row.rareza || "").trim(),
+      demanda: parseDemanda(row.demanda),
+      estabilidad: normalizeStability(row.estabilidad),
     });
     vote_values[nombre] = votesFromUnitRow(row, valor);
   }
