@@ -7,7 +7,12 @@ import {
   RARITY_IDS_DESC,
 } from "./rarity.js";
 import { t } from "./strings.js";
-import { VOTE_DISPLAY_ORDER, voteKey, voteDisplayLabel } from "./votes.js";
+import {
+  VOTE_DISPLAY_ORDER,
+  ESSENTIAL_VOTE_NUMS,
+  voteKey,
+  voteDisplayLabel,
+} from "./votes.js";
 import { callEdgeFunction, edgeFunctionsConfigured } from "./edgeApi.js";
 import {
   compareImageWithUnits,
@@ -119,6 +124,11 @@ let calcRarityFilter =
 
 /** @type {"all" | string} */
 let tradeSuggestionsOpen = false;
+const OWNED_UNITS_STORAGE = "tdhub_owned_units";
+/** @type {Set<string>} */
+let tradeOwnedUnits = loadOwnedUnits();
+/** @type {HTMLDialogElement | null} */
+let tradeInventoryDialogEl = null;
 let tradeRarityFilter =
   typeof localStorage !== "undefined"
     ? readRarityFilter("tdhub_trade_rarity")
@@ -388,13 +398,30 @@ function voteValueForUnit(unit, voteKey) {
   return uv[voteKey] ?? baseVal;
 }
 
-/** Votos que alteran el valor base en al menos una unidad del listado. */
-function voteColumnsWithChanges(unitList) {
+function loadOwnedUnits() {
+  try {
+    const raw = localStorage.getItem(OWNED_UNITS_STORAGE);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveOwnedUnits() {
+  localStorage.setItem(
+    OWNED_UNITS_STORAGE,
+    JSON.stringify([...tradeOwnedUnits]),
+  );
+}
+
+/** Votos compatibles con una unidad: cambian el valor o son HR/THO. */
+function compatibleVotesForUnit(u) {
+  const baseVal = Number(u.valor) || 0;
   return VOTE_DISPLAY_ORDER.filter((vn) => {
-    const vk = voteKey(vn);
-    return unitList.some(
-      (u) => voteValueForUnit(u, vk) !== (Number(u.valor) || 0),
-    );
+    if (ESSENTIAL_VOTE_NUMS.includes(vn)) return true;
+    return voteValueForUnit(u, voteKey(vn)) !== baseVal;
   });
 }
 
@@ -463,7 +490,7 @@ function scoreTradeSuggestion(gap, totalVal, suggestionUnits) {
 }
 
 /** @returns {Array<{type:"single"|"pair", units:Unit[], totalVal:number, remain:number, matchPct:number, score:number}>} */
-function findTradeSuggestions(gap) {
+function findTradeSuggestions(gap, { onlyOwned = false } = {}) {
   if (gap <= 0) return [];
 
   const ranked = [...units]
@@ -471,7 +498,8 @@ function findTradeSuggestions(gap) {
       u,
       val: unitBaseTradeValue(u),
     }))
-    .filter((c) => c.val > 0);
+    .filter((c) => c.val > 0)
+    .filter((c) => !onlyOwned || tradeOwnedUnits.has(c.u.nombre));
 
   const singles = ranked.map((c) => {
     const scored = scoreTradeSuggestion(gap, c.val, [c.u]);
@@ -521,6 +549,103 @@ function findTradeSuggestions(gap) {
   return merged.slice(0, 5);
 }
 
+function ensureTradeInventoryDialog() {
+  if (tradeInventoryDialogEl) return;
+  const d = document.createElement("dialog");
+  d.className = "trade-inventory-dialog";
+  d.innerHTML = `
+    <div class="trade-inventory-dialog-inner" data-inventory-body></div>
+    <div class="trade-inventory-dialog-foot">
+      <button type="button" class="trade-inventory-clear" data-inventory-clear></button>
+      <button type="button" class="trade-inventory-save" data-inventory-save></button>
+    </div>`;
+  document.body.appendChild(d);
+  tradeInventoryDialogEl = d;
+  d.addEventListener("click", (ev) => {
+    if (ev.target === d) d.close();
+  });
+}
+
+function renderTradeInventoryDialogBody(draft, searchQ = "") {
+  const body = tradeInventoryDialogEl.querySelector("[data-inventory-body]");
+  body.innerHTML = "";
+
+  const head = document.createElement("div");
+  head.className = "trade-inventory-dialog-head";
+  const h = document.createElement("h3");
+  h.textContent = t(lang, "trade.inventory_title");
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent = t(lang, "trade.inventory_hint");
+  const count = document.createElement("p");
+  count.className = "trade-inventory-count";
+  count.textContent = t(lang, "trade.inventory_count", { n: draft.size });
+  head.appendChild(h);
+  head.appendChild(hint);
+  head.appendChild(count);
+  body.appendChild(head);
+
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "trade-inventory-search";
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.placeholder = t(lang, "trade.inventory_search");
+  inp.value = searchQ;
+  inp.autocomplete = "off";
+  inp.spellcheck = false;
+  searchWrap.appendChild(inp);
+  body.appendChild(searchWrap);
+
+  const grid = document.createElement("div");
+  grid.className = "trade-inventory-pick-grid";
+  const list = getFilteredUnits(searchQ, "all");
+  for (const u of list) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `trade-inventory-pick ${cardRarityClass(u.rareza)}${draft.has(u.nombre) ? " trade-inventory-pick--on" : ""}`.trim();
+    const img = document.createElement("img");
+    img.src = u.imagen ? assetUrl(u.imagen) : "";
+    img.alt = "";
+    const lbl = document.createElement("span");
+    lbl.textContent = unitDisplayName(u);
+    btn.appendChild(img);
+    btn.appendChild(lbl);
+    btn.onclick = () => {
+      if (draft.has(u.nombre)) draft.delete(u.nombre);
+      else draft.add(u.nombre);
+      renderTradeInventoryDialogBody(draft, inp.value);
+    };
+    grid.appendChild(btn);
+  }
+  body.appendChild(grid);
+
+  inp.addEventListener("input", () => {
+    renderTradeInventoryDialogBody(draft, inp.value);
+  });
+
+  const clearBtn = tradeInventoryDialogEl.querySelector("[data-inventory-clear]");
+  const saveBtn = tradeInventoryDialogEl.querySelector("[data-inventory-save]");
+  clearBtn.textContent = t(lang, "trade.inventory_clear");
+  saveBtn.textContent = t(lang, "trade.inventory_save");
+  clearBtn.onclick = () => {
+    draft.clear();
+    renderTradeInventoryDialogBody(draft, inp.value);
+  };
+  saveBtn.onclick = () => {
+    tradeOwnedUnits = new Set(draft);
+    saveOwnedUnits();
+    tradeInventoryDialogEl.close();
+    renderApp();
+  };
+}
+
+function openTradeInventoryDialog() {
+  ensureTradeInventoryDialog();
+  const draft = new Set(tradeOwnedUnits);
+  renderTradeInventoryDialogBody(draft, "");
+  tradeInventoryDialogEl.showModal();
+}
+
 function buildSuggestUnitThumb(u, { small = false } = {}) {
   const wrap = document.createElement("div");
   wrap.className = `trade-suggest-thumb ${cardRarityClass(u.rareza)}${small ? " trade-suggest-thumb--sm" : ""}`.trim();
@@ -544,13 +669,29 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
 
   const head = document.createElement("div");
   head.className = "trade-suggestions-head";
-  const title = document.createElement("h4");
-  title.textContent = t(lang, "trade.suggest_toggle");
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "trade-suggestions-title-wrap";
   const spark = document.createElement("span");
   spark.className = "trade-suggestions-spark";
   spark.textContent = "✦";
-  head.appendChild(spark);
-  head.appendChild(title);
+  const title = document.createElement("h4");
+  title.textContent = t(lang, "trade.suggest_toggle");
+  titleWrap.appendChild(spark);
+  titleWrap.appendChild(title);
+
+  const invBtn = document.createElement("button");
+  invBtn.type = "button";
+  invBtn.className = "trade-inventory-open-btn";
+  invBtn.textContent = t(lang, "trade.inventory_open");
+  if (tradeOwnedUnits.size > 0) {
+    invBtn.title = t(lang, "trade.suggest_from_owned", {
+      n: tradeOwnedUnits.size,
+    });
+  }
+  invBtn.onclick = () => openTradeInventoryDialog();
+
+  head.appendChild(titleWrap);
+  head.appendChild(invBtn);
   panel.appendChild(head);
 
   const rightHasUnits = Object.keys(tradeRightCounts).some((nombre) => {
@@ -590,7 +731,25 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
 
   const list = document.createElement("div");
   list.className = "trade-suggestions-list";
-  const suggestions = findTradeSuggestions(gap);
+  const useOwned = tradeOwnedUnits.size > 0;
+  let suggestions = findTradeSuggestions(gap, { onlyOwned: useOwned });
+
+  if (useOwned) {
+    const ownedNote = document.createElement("p");
+    ownedNote.className = "trade-suggestions-owned muted";
+    ownedNote.textContent = t(lang, "trade.suggest_from_owned", {
+      n: tradeOwnedUnits.size,
+    });
+    panel.appendChild(ownedNote);
+  }
+
+  if (!suggestions.length && useOwned) {
+    const empty = document.createElement("p");
+    empty.className = "trade-suggestions-empty muted";
+    empty.textContent = t(lang, "trade.suggest_no_owned");
+    panel.appendChild(empty);
+    return panel;
+  }
 
   suggestions.forEach((sug, idx) => {
     const item = document.createElement("article");
@@ -1987,19 +2146,46 @@ function buildValuesUnitCell(u, sticky = false) {
   return cell;
 }
 
-function buildVoteHeaderCell(vn) {
-  const th = document.createElement("th");
-  th.className = "values-vote-head";
-  th.title = voteDisplayLabel(lang, vn);
-  const img = document.createElement("img");
-  img.src = assetUrl(`assets/votos/voto${vn}.png`);
-  img.alt = voteDisplayLabel(lang, vn);
-  img.onerror = () => img.remove();
-  const lbl = document.createElement("span");
-  lbl.textContent = voteDisplayLabel(lang, vn);
-  th.appendChild(img);
-  th.appendChild(lbl);
-  return th;
+function buildValuesVotePillsCell(u) {
+  const td = document.createElement("td");
+  td.className = "values-cell-votes";
+  const wrap = document.createElement("div");
+  wrap.className = "values-vote-pills";
+  const applicable = compatibleVotesForUnit(u);
+  const baseVal = Number(u.valor) || 0;
+
+  for (const vn of applicable) {
+    const v = voteValueForUnit(u, voteKey(vn));
+    const pill = document.createElement("span");
+    pill.className = [
+      "values-vote-pill",
+      v !== baseVal ? "values-vote-pill--diff" : "",
+      ESSENTIAL_VOTE_NUMS.includes(vn) ? "values-vote-pill--essential" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    pill.title = voteDisplayLabel(lang, vn);
+
+    const img = document.createElement("img");
+    img.src = assetUrl(`assets/votos/voto${vn}.png`);
+    img.alt = "";
+    img.onerror = () => img.remove();
+
+    const lbl = document.createElement("span");
+    lbl.className = "values-vote-pill-label";
+    lbl.textContent = voteDisplayLabel(lang, vn);
+
+    const val = document.createElement("b");
+    val.textContent = String(v);
+
+    pill.appendChild(img);
+    pill.appendChild(lbl);
+    pill.appendChild(val);
+    wrap.appendChild(pill);
+  }
+
+  td.appendChild(wrap);
+  return td;
 }
 
 function buildValuesRarityColumn(rarityId, rarityUnits) {
@@ -2127,25 +2313,21 @@ function buildValuesView() {
   votesSection.appendChild(votesHint);
 
   if (filtered.length) {
-    const activeVotes = voteColumnsWithChanges(filtered);
     const votesWrap = document.createElement("div");
     votesWrap.className = "values-table-wrap values-table-wrap--wide";
     const votesTable = document.createElement("table");
-    votesTable.className = "values-table values-table--votes";
+    votesTable.className = "values-table values-table--votes values-table--votes-compact";
     const voteHead = document.createElement("thead");
     const headRow = document.createElement("tr");
     const unitTh = document.createElement("th");
     unitTh.className = "values-sticky-col";
     unitTh.textContent = t(lang, "values.col_unit");
     headRow.appendChild(unitTh);
-    for (const key of ["col_demand", "col_stability"]) {
+    for (const key of ["col_demand", "col_stability", "col_votes"]) {
       const th = document.createElement("th");
-      th.className = "values-demand-head";
+      th.className = key === "col_votes" ? "values-votes-col-head" : "values-demand-head";
       th.textContent = t(lang, `values.${key}`);
       headRow.appendChild(th);
-    }
-    for (const vn of activeVotes) {
-      headRow.appendChild(buildVoteHeaderCell(vn));
     }
     voteHead.appendChild(headRow);
     votesTable.appendChild(voteHead);
@@ -2157,17 +2339,7 @@ function buildValuesView() {
       tr.appendChild(buildValuesUnitCell(u, true));
       tr.appendChild(buildValuesDemandCell(u));
       tr.appendChild(buildValuesStabilityCell(u));
-      const baseVal = Number(u.valor) || 0;
-      for (const vn of activeVotes) {
-        const td = document.createElement("td");
-        const v = voteValueForUnit(u, voteKey(vn));
-        td.className =
-          v !== baseVal
-            ? "values-cell-num values-cell-num--diff"
-            : "values-cell-num";
-        td.textContent = String(v);
-        tr.appendChild(td);
-      }
+      tr.appendChild(buildValuesVotePillsCell(u));
       voteBody.appendChild(tr);
     }
     votesTable.appendChild(voteBody);
@@ -2717,19 +2889,32 @@ function buildCreditsView() {
     p.style.setProperty("--i", String(i));
     particles.appendChild(p);
   }
+  const shine = document.createElement("div");
+  shine.className = "credits-shine";
+  shine.setAttribute("aria-hidden", "true");
+  const floor = document.createElement("div");
+  floor.className = "credits-floor";
+  floor.setAttribute("aria-hidden", "true");
+
   stage.appendChild(aurora);
   stage.appendChild(glowA);
   stage.appendChild(glowB);
   stage.appendChild(glowC);
   stage.appendChild(spotlight);
   stage.appendChild(particles);
+  stage.appendChild(shine);
+  stage.appendChild(floor);
 
   const d = document.createElement("div");
   d.className = "credits-box";
 
   const header = document.createElement("header");
   header.className = "credits-header";
+  const kicker = document.createElement("p");
+  kicker.className = "credits-kicker";
+  kicker.textContent = t(lang, "credits.kicker");
   const title = document.createElement("h2");
+  title.className = "credits-title-main";
   title.textContent = t(lang, "credits.title");
   const intro = document.createElement("p");
   intro.className = "credits-intro muted";
@@ -2737,6 +2922,7 @@ function buildCreditsView() {
   const badge = document.createElement("span");
   badge.className = "credits-badge";
   badge.textContent = t(lang, "credits.badge");
+  header.appendChild(kicker);
   header.appendChild(title);
   header.appendChild(intro);
   header.appendChild(badge);
@@ -2744,9 +2930,14 @@ function buildCreditsView() {
 
   const grid = document.createElement("div");
   grid.className = "credits-grid";
-  for (const m of CREDITS_PROFILES) {
+  CREDITS_PROFILES.forEach((m, idx) => {
     const card = document.createElement("article");
     card.className = `credits-card credits-card--portrait ${m.accent}`;
+    card.style.setProperty("--card-i", String(idx));
+
+    const cardGlow = document.createElement("div");
+    cardGlow.className = "credits-card-glow";
+    cardGlow.setAttribute("aria-hidden", "true");
 
     const avatarFrame = document.createElement("div");
     avatarFrame.className = "credits-avatar-frame";
@@ -2802,11 +2993,12 @@ function buildCreditsView() {
     actions.appendChild(dBtn);
     actions.appendChild(rBtn);
 
+    card.appendChild(cardGlow);
     card.appendChild(avatarFrame);
     card.appendChild(meta);
     card.appendChild(actions);
     grid.appendChild(card);
-  }
+  });
   d.appendChild(grid);
 
   const foot = document.createElement("p");
