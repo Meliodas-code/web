@@ -699,6 +699,8 @@ function patchInventoryDraftUI(draft, selectedNombre) {
   if (scrollHost) scrollHost.scrollTop = scrollTop;
   if (grid) grid.scrollTop = gridScrollTop;
 }
+
+function patchInventoryUnitSelection(draft, selectedNombre) {
   const body = tradeInventoryDialogEl?.querySelector("[data-inventory-body]");
   if (!body) return;
 
@@ -3363,6 +3365,13 @@ function buildPredictionVoteGroupPill(group) {
 }
 
 function matchesPredictionFilter(row) {
+  const q = lastSearchPredictions.trim().toLowerCase();
+  if (q) {
+    const name = unitDisplayName(row.unit).toLowerCase();
+    const raw = (row.unit.nombre || "").toLowerCase();
+    if (!name.includes(q) && !raw.includes(q)) return false;
+  }
+
   const t0 = row.base.trend;
   if (predictionsFilter === "all") {
     // pass trend filter
@@ -3419,6 +3428,219 @@ function buildPredictionsRarityFilterBar() {
   bar.appendChild(lbl);
   bar.appendChild(chips);
   return bar;
+}
+
+function buildPredictionDistributionBar(summary) {
+  const total = Math.max(1, summary.total);
+  const bar = document.createElement("div");
+  bar.className = "pred-distribution pred-dash-bar";
+  bar.setAttribute("role", "img");
+  bar.title = `${summary.up}↑ ${summary.stable}→ ${summary.down}↓`;
+
+  for (const [count, cls] of [
+    [summary.up, "pred-distribution-seg--up"],
+    [summary.stable, "pred-distribution-seg--stable"],
+    [summary.down, "pred-distribution-seg--down"],
+  ]) {
+    if (!count) continue;
+    const seg = document.createElement("span");
+    seg.className = `pred-distribution-seg ${cls}`;
+    seg.style.flex = String(Math.max(count, 1));
+    bar.appendChild(seg);
+  }
+  return bar;
+}
+
+function buildPredictionsStatTile(filterId, count, labelKey, modClass) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = [
+    "pred-dash-stat",
+    `pred-dash-stat--${modClass}`,
+    predictionsFilter === filterId ? "active" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const num = document.createElement("span");
+  num.className = "pred-dash-stat-num";
+  num.textContent = String(count);
+  const lbl = document.createElement("span");
+  lbl.className = "pred-dash-stat-lbl";
+  lbl.textContent = t(lang, labelKey);
+  btn.appendChild(num);
+  btn.appendChild(lbl);
+  btn.onclick = () => {
+    predictionsFilter = predictionsFilter === filterId ? "all" : filterId;
+    localStorage.setItem("tdhub_pred_filter", predictionsFilter);
+    renderApp();
+  };
+  return btn;
+}
+
+function buildPredictionsDashboard(rows, summary, snaps) {
+  const dash = document.createElement("section");
+  dash.className = "pred-dash";
+
+  const head = document.createElement("div");
+  head.className = "pred-dash-head";
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "pred-dash-title-wrap";
+  const title = document.createElement("h3");
+  title.className = "pred-dash-title";
+  title.textContent = t(lang, "predictions.dash_title");
+  const beta = document.createElement("span");
+  beta.className = "pred-dash-beta";
+  beta.textContent = t(lang, "predictions.beta_badge");
+  titleWrap.appendChild(title);
+  titleWrap.appendChild(beta);
+  const hint = document.createElement("p");
+  hint.className = "pred-dash-hint muted";
+  hint.textContent = t(
+    lang,
+    snaps >= 2 ? "predictions.dash_hint_ready" : "predictions.dash_hint_warming",
+  );
+  head.appendChild(titleWrap);
+  head.appendChild(hint);
+  dash.appendChild(head);
+
+  const stats = document.createElement("div");
+  stats.className = "pred-dash-stats";
+  stats.title = t(lang, "predictions.filter_hint");
+  stats.appendChild(buildPredictionsStatTile("up", summary.up, "predictions.summary_up", "up"));
+  stats.appendChild(
+    buildPredictionsStatTile("stable", summary.stable, "predictions.summary_stable", "stable"),
+  );
+  stats.appendChild(
+    buildPredictionsStatTile("down", summary.down, "predictions.summary_down", "down"),
+  );
+  dash.appendChild(stats);
+  dash.appendChild(buildPredictionDistributionBar(summary));
+
+  const upRows = rows
+    .filter((r) => r.base.trend === "up" || r.base.trend === "forecast_up")
+    .sort((a, b) => (b.base.delta || 0) - (a.base.delta || 0))
+    .slice(0, 4);
+  const downRows = rows
+    .filter((r) => r.base.trend === "down" || r.base.trend === "forecast_down")
+    .sort((a, b) => (a.base.delta || 0) - (b.base.delta || 0))
+    .slice(0, 4);
+
+  if (upRows.length || downRows.length) {
+    const spot = document.createElement("div");
+    spot.className = "pred-dash-spotlight";
+
+    function spotCol(kind, labelKey, items) {
+      if (!items.length) return;
+      const col = document.createElement("div");
+      col.className = `pred-dash-spot-col pred-dash-spot-col--${kind}`;
+      const lbl = document.createElement("span");
+      lbl.className = "pred-dash-spot-label";
+      lbl.textContent = t(lang, labelKey);
+      col.appendChild(lbl);
+      const list = document.createElement("ul");
+      list.className = "pred-dash-spot-list";
+      for (const row of items) {
+        const li = document.createElement("li");
+        li.className = `pred-dash-spot-item ${cardRarityClass(row.unit.rareza)}`.trim();
+        if (row.unit.imagen) {
+          const img = document.createElement("img");
+          img.src = assetUrl(row.unit.imagen);
+          img.alt = "";
+          li.appendChild(img);
+        }
+        const meta = document.createElement("div");
+        meta.className = "pred-dash-spot-meta";
+        const name = document.createElement("strong");
+        name.textContent = unitDisplayName(row.unit);
+        const delta = document.createElement("span");
+        delta.className = "pred-dash-spot-delta";
+        const sign = row.base.delta > 0 ? "+" : "";
+        delta.textContent = `${sign}${row.base.delta || "—"}`;
+        meta.appendChild(name);
+        meta.appendChild(delta);
+        li.appendChild(meta);
+        list.appendChild(li);
+      }
+      col.appendChild(list);
+      spot.appendChild(col);
+    }
+
+    spotCol("up", "predictions.spotlight_risers", upRows);
+    spotCol("down", "predictions.spotlight_fallers", downRows);
+    dash.appendChild(spot);
+  }
+
+  return dash;
+}
+
+function buildPredictionsToolbar() {
+  const toolbar = document.createElement("div");
+  toolbar.className = "pred-toolbar";
+
+  const row = document.createElement("div");
+  row.className = "pred-toolbar-row";
+
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "pred-search-input";
+  search.placeholder = t(lang, "predictions.search");
+  search.value = lastSearchPredictions;
+  search.autocomplete = "off";
+  search.spellcheck = false;
+  search.oninput = () => {
+    lastSearchPredictions = search.value;
+    renderApp();
+  };
+
+  const filterBar = document.createElement("div");
+  filterBar.className = "pred-filter-bar pred-filter-bar--compact";
+  for (const [id, labelKey] of [
+    ["all", "predictions.filter_all"],
+    ["up", "predictions.filter_up"],
+    ["down", "predictions.filter_down"],
+    ["stable", "predictions.filter_stable"],
+  ]) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className =
+      predictionsFilter === id ? "pred-filter-btn active" : "pred-filter-btn";
+    btn.textContent = t(lang, labelKey);
+    btn.onclick = () => {
+      predictionsFilter = id;
+      localStorage.setItem("tdhub_pred_filter", id);
+      renderApp();
+    };
+    filterBar.appendChild(btn);
+  }
+
+  const sortSel = document.createElement("select");
+  sortSel.className = "pred-sort-select pred-sort-select--toolbar";
+  sortSel.title = t(lang, "predictions.sort_label");
+  for (const [id, labelKey] of [
+    ["score", "predictions.sort_score"],
+    ["rarity", "predictions.sort_rarity"],
+    ["delta", "predictions.sort_delta"],
+    ["value", "predictions.sort_value"],
+    ["name", "predictions.sort_name"],
+  ]) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = t(lang, labelKey);
+    opt.selected = predictionsSort === id;
+    sortSel.appendChild(opt);
+  }
+  sortSel.onchange = () => {
+    predictionsSort = /** @type {typeof predictionsSort} */ (sortSel.value);
+    localStorage.setItem("tdhub_pred_sort", predictionsSort);
+    renderApp();
+  };
+
+  row.appendChild(search);
+  row.appendChild(filterBar);
+  row.appendChild(sortSel);
+  toolbar.appendChild(row);
+  toolbar.appendChild(buildPredictionsRarityFilterBar());
+  return toolbar;
 }
 
 function buildPredictionDonut(summary) {
@@ -3631,6 +3853,7 @@ function buildPredictionCard(row) {
   ]
     .filter(Boolean)
     .join(" ");
+  card.title = t(lang, row.tipKey);
 
   const head = document.createElement("div");
   head.className = "pred-card-head";
@@ -3670,32 +3893,46 @@ function buildPredictionCard(row) {
   identity.appendChild(info);
   head.appendChild(identity);
 
-  const sparkWrap = document.createElement("div");
-  sparkWrap.className = "pred-card-spark-wrap";
-  sparkWrap.appendChild(buildPredictionScoreBadge(row.score));
-  sparkWrap.appendChild(buildPredictionSparkline(row.sparkline));
-  head.appendChild(sparkWrap);
+  const side = document.createElement("div");
+  side.className = "pred-card-side";
+  side.appendChild(buildPredictionScoreBadge(row.score));
+  side.appendChild(buildPredictionSparkline(row.sparkline));
+  head.appendChild(side);
+
+  card.appendChild(head);
+
+  const mainTrend = buildPredictionTrendPill(
+    row.base.trend,
+    row.base.delta,
+    "",
+  );
+  mainTrend.classList.add("pred-card-main-trend");
 
   const trends = document.createElement("div");
   trends.className = "pred-card-trends";
-  trends.appendChild(
-    buildPredictionTrendPill(row.base.trend, row.base.delta, `${t(lang, "predictions.base_value")}: `),
-  );
+  trends.appendChild(mainTrend);
+
   const baseVal = Number(row.unit.valor) || 0;
+  let extraVotes = 0;
   for (const group of row.voteGroups || []) {
     if (group.value === baseVal && group.trend === "stable" && group.delta === 0) {
       continue;
     }
+    if (trends.childElementCount >= 3) {
+      extraVotes += 1;
+      continue;
+    }
     trends.appendChild(buildPredictionVoteGroupPill(group));
   }
+  if (extraVotes > 0) {
+    const more = document.createElement("span");
+    more.className = "pred-card-more-votes muted";
+    more.textContent = `+${extraVotes}`;
+    more.title = t(lang, "predictions.vote_label");
+    trends.appendChild(more);
+  }
 
-  const tip = document.createElement("p");
-  tip.className = "pred-card-tip muted";
-  tip.textContent = t(lang, row.tipKey);
-
-  card.appendChild(head);
   card.appendChild(trends);
-  card.appendChild(tip);
   return card;
 }
 
@@ -3718,113 +3955,19 @@ function buildPredictionsView() {
   const wrap = document.createElement("div");
   wrap.className = "view-predictions";
 
-  wrap.appendChild(buildPageHeader("predictions.title", "predictions.subtitle"));
-
-  const beta = document.createElement("div");
-  beta.className = "pred-beta-banner";
-  beta.innerHTML = `
-    <span class="pred-beta-badge">${escapeHtml(t(lang, "predictions.beta_badge"))}</span>
-    <p>${escapeHtml(t(lang, "predictions.beta_notice"))}</p>`;
-  wrap.appendChild(beta);
+  const header = buildPageHeader("predictions.title", "predictions.subtitle");
+  const notice = document.createElement("p");
+  notice.className = "pred-page-notice muted";
+  notice.textContent = t(lang, "predictions.beta_notice");
+  header.appendChild(notice);
+  wrap.appendChild(header);
 
   const rows = buildPredictions(units, vote_values, valueHistory);
   const summary = predictionSummary(rows);
-  const rarityBreakdown = buildRarityBreakdown(rows);
   const snaps = historySnapshotCount();
 
-  const analytics = document.createElement("div");
-  analytics.className = "pred-analytics";
-
-  const summaryBox = document.createElement("div");
-  summaryBox.className = "pred-summary";
-  summaryBox.innerHTML = `
-    <div class="pred-summary-stat pred-summary-stat--up">
-      <span class="pred-summary-num">${summary.up}</span>
-      <span class="pred-summary-lbl">${escapeHtml(t(lang, "predictions.summary_up"))}</span>
-    </div>
-    <div class="pred-summary-stat pred-summary-stat--stable">
-      <span class="pred-summary-num">${summary.stable}</span>
-      <span class="pred-summary-lbl">${escapeHtml(t(lang, "predictions.summary_stable"))}</span>
-    </div>
-    <div class="pred-summary-stat pred-summary-stat--down">
-      <span class="pred-summary-num">${summary.down}</span>
-      <span class="pred-summary-lbl">${escapeHtml(t(lang, "predictions.summary_down"))}</span>
-    </div>`;
-
-  const charts = document.createElement("div");
-  charts.className = "pred-charts";
-  charts.appendChild(buildPredictionDonut(summary));
-  charts.appendChild(buildRarityTrendChart(rarityBreakdown));
-
-  analytics.appendChild(summaryBox);
-  analytics.appendChild(charts);
-  wrap.appendChild(analytics);
-
-  const spotlight = buildPredictionSpotlight(rows);
-  if (spotlight.childElementCount > 0) wrap.appendChild(spotlight);
-
-  const meta = document.createElement("p");
-  meta.className = "pred-meta muted";
-  meta.textContent = t(lang, snaps >= 2 ? "predictions.history_ready" : "predictions.history_warming");
-  wrap.appendChild(meta);
-
-  const controls = document.createElement("div");
-  controls.className = "pred-controls";
-
-  const filterBar = document.createElement("div");
-  filterBar.className = "pred-filter-bar";
-  for (const [id, labelKey] of [
-    ["all", "predictions.filter_all"],
-    ["up", "predictions.filter_up"],
-    ["down", "predictions.filter_down"],
-    ["stable", "predictions.filter_stable"],
-  ]) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className =
-      predictionsFilter === id ? "pred-filter-btn active" : "pred-filter-btn";
-    btn.textContent = t(lang, labelKey);
-    btn.onclick = () => {
-      predictionsFilter = id;
-      localStorage.setItem("tdhub_pred_filter", id);
-      renderApp();
-    };
-    filterBar.appendChild(btn);
-  }
-  controls.appendChild(filterBar);
-
-  const sortRow = document.createElement("div");
-  sortRow.className = "pred-sort-row";
-  const sortLbl = document.createElement("label");
-  sortLbl.className = "pred-sort-label";
-  sortLbl.htmlFor = "pred-sort-select";
-  sortLbl.textContent = t(lang, "predictions.sort_label");
-  const sortSel = document.createElement("select");
-  sortSel.id = "pred-sort-select";
-  sortSel.className = "pred-sort-select";
-  for (const [id, labelKey] of [
-    ["score", "predictions.sort_score"],
-    ["rarity", "predictions.sort_rarity"],
-    ["delta", "predictions.sort_delta"],
-    ["value", "predictions.sort_value"],
-    ["name", "predictions.sort_name"],
-  ]) {
-    const opt = document.createElement("option");
-    opt.value = id;
-    opt.textContent = t(lang, labelKey);
-    opt.selected = predictionsSort === id;
-    sortSel.appendChild(opt);
-  }
-  sortSel.onchange = () => {
-    predictionsSort = /** @type {typeof predictionsSort} */ (sortSel.value);
-    localStorage.setItem("tdhub_pred_sort", predictionsSort);
-    renderApp();
-  };
-  sortRow.appendChild(sortLbl);
-  sortRow.appendChild(sortSel);
-  controls.appendChild(sortRow);
-  controls.appendChild(buildPredictionsRarityFilterBar());
-  wrap.appendChild(controls);
+  wrap.appendChild(buildPredictionsDashboard(rows, summary, snaps));
+  wrap.appendChild(buildPredictionsToolbar());
 
   const sorted = sortPredictionRows(rows, predictionsSort);
   const filtered = sorted.filter(matchesPredictionFilter);
@@ -3862,7 +4005,7 @@ function buildPredictionsView() {
       section.appendChild(secHead);
 
       const list = document.createElement("div");
-      list.className = "pred-list";
+      list.className = "pred-list pred-list--grid";
       for (const row of groupRows) list.appendChild(buildPredictionCard(row));
       section.appendChild(list);
       listRoot.appendChild(section);
