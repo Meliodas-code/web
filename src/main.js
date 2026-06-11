@@ -363,12 +363,27 @@ const INCOMPATIBLE_VOTE_ICON_PATHS = [
   "assets/incompatible.svg",
 ];
 
+function wrapIncompatibleIconFrame(img) {
+  if (img.parentElement?.classList.contains("vote-icon-frame--incompatible")) {
+    return img.parentElement;
+  }
+  const frame = document.createElement("span");
+  frame.className = "vote-icon-frame vote-icon-frame--incompatible";
+  frame.title = img.alt || t(lang, "values.vote_incompatibles");
+  img.parentNode?.insertBefore(frame, img);
+  frame.appendChild(img);
+  return frame;
+}
+
 function createIncompatibleVoteFallback() {
+  const frame = document.createElement("span");
+  frame.className = "vote-icon-frame vote-icon-frame--incompatible";
+  frame.title = t(lang, "values.vote_incompatibles");
   const span = document.createElement("span");
   span.className = "vote-icon vote-icon--incompatible-fallback";
-  span.title = t(lang, "values.vote_incompatibles");
   span.setAttribute("aria-hidden", "true");
-  return span;
+  frame.appendChild(span);
+  return frame;
 }
 
 function setVoteIconImg(img, voteNums) {
@@ -381,10 +396,17 @@ function setVoteIconImg(img, voteNums) {
     return;
   }
   img.classList.add("vote-icon--incompatible");
+  wrapIncompatibleIconFrame(img);
   let idx = 0;
   const tryNext = () => {
     if (idx >= INCOMPATIBLE_VOTE_ICON_PATHS.length) {
-      img.replaceWith(createIncompatibleVoteFallback());
+      const frame = img.parentElement;
+      const fallback = createIncompatibleVoteFallback();
+      if (frame?.classList.contains("vote-icon-frame--incompatible")) {
+        frame.replaceWith(fallback);
+      } else {
+        img.replaceWith(fallback);
+      }
       return;
     }
     img.src = assetUrl(INCOMPATIBLE_VOTE_ICON_PATHS[idx++]);
@@ -2402,18 +2424,6 @@ function buildHomeView() {
   const d = document.createElement("div");
   d.className = "view-home";
 
-  const backdrop = document.createElement("div");
-  backdrop.className = "home-backdrop";
-  backdrop.setAttribute("aria-hidden", "true");
-  backdrop.innerHTML = `
-    <div class="home-backdrop-mesh"></div>
-    <div class="home-backdrop-orb home-backdrop-orb--a"></div>
-    <div class="home-backdrop-orb home-backdrop-orb--b"></div>
-    <div class="home-backdrop-orb home-backdrop-orb--c"></div>
-    <div class="home-backdrop-shine"></div>
-    <div class="home-backdrop-grid"></div>`;
-  d.appendChild(backdrop);
-
   const hero = document.createElement("section");
   hero.className = "home-hero";
   hero.innerHTML = `
@@ -3941,9 +3951,14 @@ function renderApp() {
   side.appendChild(langRow);
 
   const main = document.createElement("main");
-  main.className = playEnter ? "content content--enter" : "content";
-
   let route = currentRoute();
+  main.className = [
+    "content",
+    playEnter ? "content--enter" : "",
+    route === "home" ? "content--home" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   if (route === "tester" && !testerAccessAllowed()) {
     if (testerIpStatus === "pending") {
       main.appendChild(buildTesterView());
