@@ -634,19 +634,15 @@ function ownedDraftEntries(draft) {
 }
 
 function patchInventoryDraftUI(draft, selectedNombre) {
+  const scrollHost = tradeInventoryDialogEl?.querySelector(
+    ".trade-inventory-dialog-inner",
+  );
+  const scrollTop = scrollHost?.scrollTop ?? 0;
   const body = tradeInventoryDialogEl?.querySelector("[data-inventory-body]");
   if (!body) return;
 
-  const restricted = draft.length > 0;
-  const summary = inventoryDraftSummary(draft);
-  const mode = body.querySelector(".trade-inv-mode");
-  if (mode) {
-    mode.className = `trade-inv-mode ${restricted ? "trade-inv-mode--restricted" : "trade-inv-mode--open"}`.trim();
-    mode.innerHTML = inventoryDraftModeHtml(summary);
-  }
-
-  const strip = body.querySelector("[data-owned-draft-strip]");
-  if (strip) renderOwnedDraftStrip(strip, draft, selectedNombre);
+  const summaryCard = body.querySelector("[data-inventory-summary]");
+  patchInventorySummaryCard(summaryCard, draft, selectedNombre);
 
   for (const tile of body.querySelectorAll(".trade-inv-tile")) {
     const nombre = tile.dataset.nombre;
@@ -676,14 +672,11 @@ function patchInventoryDraftUI(draft, selectedNombre) {
   const detailTotal = body.querySelector(".trade-inv-detail-unit-total");
   if (detailTotal && selectedNombre) {
     const unitTotal = ownedDraftUnitTotal(draft, selectedNombre);
-    if (unitTotal > 0) {
-      detailTotal.textContent = t(lang, "trade.inventory_unit_total", {
-        total: unitTotal,
-      });
-      detailTotal.hidden = false;
-    } else {
-      detailTotal.hidden = true;
-    }
+    detailTotal.textContent = String(unitTotal);
+    detailTotal.title = t(lang, "trade.inventory_unit_total", {
+      total: unitTotal,
+    });
+    detailTotal.hidden = unitTotal <= 0;
   }
 
   for (const row of body.querySelectorAll(".trade-inv-vote-line")) {
@@ -698,6 +691,8 @@ function patchInventoryDraftUI(draft, selectedNombre) {
     if (btnMinus) btnMinus.disabled = qty <= 0;
     if (btnPlus) btnPlus.disabled = qty >= 99;
   }
+
+  if (scrollHost) scrollHost.scrollTop = scrollTop;
 }
 
 function isInventoryRestricted() {
@@ -1042,14 +1037,93 @@ function findTradeSuggestions(gap, { onlyOwned = false, avgRecvDemand = null } =
     .slice(0, 6);
 }
 
-function inventoryDraftModeHtml(summary) {
+function buildInventorySummaryCard(draft, selectedNombre) {
+  const summary = inventoryDraftSummary(draft);
   const restricted = summary.entries > 0;
-  if (!restricted) {
-    return `<strong>${escapeHtml(t(lang, "trade.inventory_mode_open"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_mode_open_hint"))}</span>`;
+
+  const card = document.createElement("section");
+  card.className = `trade-inv-summary-card ${restricted ? "trade-inv-summary-card--restricted" : "trade-inv-summary-card--open"}`.trim();
+  card.dataset.inventorySummary = "1";
+
+  const top = document.createElement("div");
+  top.className = "trade-inv-summary-top";
+
+  const copy = document.createElement("div");
+  copy.className = "trade-inv-summary-copy";
+  const title = document.createElement("strong");
+  title.dataset.summaryTitle = "1";
+  title.textContent = restricted
+    ? t(lang, "trade.inventory_mode_restricted")
+    : t(lang, "trade.inventory_mode_open");
+  const meta = document.createElement("span");
+  meta.dataset.summaryMeta = "1";
+  meta.textContent = restricted
+    ? t(lang, "trade.inventory_count", summary)
+    : t(lang, "trade.inventory_mode_open_hint");
+  copy.appendChild(title);
+  copy.appendChild(meta);
+  top.appendChild(copy);
+
+  const totalWrap = document.createElement("div");
+  totalWrap.className = "trade-inv-summary-total-wrap";
+  totalWrap.hidden = !restricted;
+  const totalLbl = document.createElement("span");
+  totalLbl.className = "trade-inv-summary-total-label";
+  totalLbl.textContent = t(lang, "trade.value");
+  const totalVal = document.createElement("span");
+  totalVal.className = "trade-inv-summary-total";
+  totalVal.dataset.summaryTotal = "1";
+  totalVal.textContent = String(summary.total);
+  totalWrap.appendChild(totalLbl);
+  totalWrap.appendChild(totalVal);
+  top.appendChild(totalWrap);
+
+  card.appendChild(top);
+
+  const stripWrap = document.createElement("div");
+  stripWrap.className = "trade-inv-summary-strip-wrap";
+  stripWrap.hidden = !restricted;
+  const strip = document.createElement("div");
+  strip.className = "trade-inventory-strip trade-inv-summary-strip";
+  strip.dataset.ownedDraftStrip = "1";
+  renderOwnedDraftStrip(strip, draft, selectedNombre);
+  stripWrap.appendChild(strip);
+  card.appendChild(stripWrap);
+
+  return card;
+}
+
+function patchInventorySummaryCard(cardEl, draft, selectedNombre) {
+  if (!cardEl) return;
+  const summary = inventoryDraftSummary(draft);
+  const restricted = summary.entries > 0;
+
+  cardEl.className = `trade-inv-summary-card ${restricted ? "trade-inv-summary-card--restricted" : "trade-inv-summary-card--open"}`.trim();
+
+  const title = cardEl.querySelector("[data-summary-title]");
+  const meta = cardEl.querySelector("[data-summary-meta]");
+  const totalWrap = cardEl.querySelector(".trade-inv-summary-total-wrap");
+  const totalVal = cardEl.querySelector("[data-summary-total]");
+  const stripWrap = cardEl.querySelector(".trade-inv-summary-strip-wrap");
+
+  if (title) {
+    title.textContent = restricted
+      ? t(lang, "trade.inventory_mode_restricted")
+      : t(lang, "trade.inventory_mode_open");
   }
-  const count = t(lang, "trade.inventory_count", summary);
-  const total = t(lang, "trade.inventory_total", { total: summary.total });
-  return `<strong>${escapeHtml(t(lang, "trade.inventory_mode_restricted"))}</strong><span>${escapeHtml(count)} · ${escapeHtml(total)}</span>`;
+  if (meta) {
+    meta.textContent = restricted
+      ? t(lang, "trade.inventory_count", summary)
+      : t(lang, "trade.inventory_mode_open_hint");
+  }
+  if (totalWrap) totalWrap.hidden = !restricted;
+  if (totalVal) totalVal.textContent = String(summary.total);
+
+  if (stripWrap) {
+    stripWrap.hidden = !restricted;
+    const strip = stripWrap.querySelector("[data-owned-draft-strip]");
+    if (strip && restricted) renderOwnedDraftStrip(strip, draft, selectedNombre);
+  }
 }
 
 function buildTradeInvSlotEl({ unit: u, voteKey, qty }, { onActivate } = {}) {
@@ -1102,13 +1176,11 @@ function buildTradeInvSlotEl({ unit: u, voteKey, qty }, { onActivate } = {}) {
 }
 
 function renderOwnedDraftStrip(stripEl, draft, selectedNombre) {
+  if (!stripEl) return;
+  const stripScroll = stripEl.scrollLeft;
   stripEl.innerHTML = "";
   const entries = ownedDraftEntries(draft);
   if (!entries.length) {
-    const empty = document.createElement("p");
-    empty.className = "trade-inventory-empty muted";
-    empty.textContent = t(lang, "trade.inventory_strip_empty");
-    stripEl.appendChild(empty);
     return;
   }
 
@@ -1127,26 +1199,9 @@ function renderOwnedDraftStrip(stripEl, draft, selectedNombre) {
       }),
     );
   }
+  stripEl.scrollLeft = stripScroll;
 }
 
-function buildOwnedDraftStrip(draft, selectedNombre) {
-  const section = document.createElement("section");
-  section.className =
-    "trade-inventory trade-inventory--draft trade-inv-dialog-strip";
-
-  const label = document.createElement("div");
-  label.className = "trade-inventory-label";
-  label.textContent = t(lang, "trade.inventory_strip_label");
-
-  const strip = document.createElement("div");
-  strip.className = "trade-inventory-strip";
-  strip.dataset.ownedDraftStrip = "1";
-  renderOwnedDraftStrip(strip, draft, selectedNombre);
-
-  section.appendChild(label);
-  section.appendChild(strip);
-  return section;
-}
 
 function ensureTradeInventoryDialog() {
   if (tradeInventoryDialogEl) return;
@@ -1223,23 +1278,25 @@ function buildInventoryDetailPanel(u, draft) {
 
   const heroMeta = document.createElement("div");
   heroMeta.className = "trade-inv-detail-hero-meta";
+  const titleRow = document.createElement("div");
+  titleRow.className = "trade-inv-detail-title-row";
   const title = document.createElement("h4");
   title.textContent = unitDisplayName(u);
+  titleRow.appendChild(title);
+  const unitTotal = ownedDraftUnitTotal(draft, u.nombre);
+  const totalEl = document.createElement("span");
+  totalEl.className = "trade-inv-detail-unit-total";
+  totalEl.textContent = String(unitTotal);
+  totalEl.title = t(lang, "trade.inventory_unit_total", { total: unitTotal });
+  totalEl.hidden = unitTotal <= 0;
+  titleRow.appendChild(totalEl);
   const sub = document.createElement("p");
   sub.className = "muted";
   sub.textContent = t(lang, "trade.inventory_detail_sub", {
     qty: ownedQtyForUnit(draft, u.nombre),
   });
-  heroMeta.appendChild(title);
+  heroMeta.appendChild(titleRow);
   if (u.rareza) heroMeta.appendChild(buildRarityBadge(u.rareza));
-  const unitTotal = ownedDraftUnitTotal(draft, u.nombre);
-  const totalEl = document.createElement("p");
-  totalEl.className = "trade-inv-detail-unit-total";
-  totalEl.textContent = t(lang, "trade.inventory_unit_total", {
-    total: unitTotal,
-  });
-  totalEl.hidden = unitTotal <= 0;
-  heroMeta.appendChild(totalEl);
   heroMeta.appendChild(sub);
   heroMeta.appendChild(buildUnitDemandRow(u, { compact: true }));
 
@@ -1327,51 +1384,39 @@ function renderTradeInventoryDialogBody(
   const body = tradeInventoryDialogEl.querySelector("[data-inventory-body]");
   body.innerHTML = "";
 
-  const restricted = draft.length > 0;
-  const summary = inventoryDraftSummary(draft);
-
   const head = document.createElement("div");
   head.className = "trade-inv-dialog-head";
-  const headTop = document.createElement("div");
-  headTop.className = "trade-inv-dialog-head-top";
   const h = document.createElement("h3");
   h.textContent = t(lang, "trade.inventory_title");
   const closeHint = document.createElement("p");
   closeHint.className = "muted trade-inv-dialog-sub";
   closeHint.textContent = t(lang, "trade.inventory_hint");
-  headTop.appendChild(h);
-  headTop.appendChild(closeHint);
-
-  const mode = document.createElement("div");
-  mode.className = `trade-inv-mode ${restricted ? "trade-inv-mode--restricted" : "trade-inv-mode--open"}`.trim();
-  mode.innerHTML = inventoryDraftModeHtml(summary);
-
-  head.appendChild(headTop);
-  head.appendChild(mode);
+  head.appendChild(h);
+  head.appendChild(closeHint);
   body.appendChild(head);
 
-  body.appendChild(buildOwnedDraftStrip(draft, selectedNombre));
-
-  const searchWrap = document.createElement("div");
-  searchWrap.className = "trade-inventory-search trade-inv-search";
-  const inp = document.createElement("input");
-  inp.type = "text";
-  inp.placeholder = t(lang, "trade.inventory_search");
-  inp.value = searchQ;
-  inp.autocomplete = "off";
-  inp.spellcheck = false;
-  searchWrap.appendChild(inp);
-  body.appendChild(searchWrap);
+  body.appendChild(buildInventorySummaryCard(draft, selectedNombre));
 
   const layout = document.createElement("div");
   layout.className = "trade-inv-layout";
 
   const gridCol = document.createElement("div");
   gridCol.className = "trade-inv-grid-col";
+  const gridHead = document.createElement("div");
+  gridHead.className = "trade-inv-col-head";
   const gridLabel = document.createElement("div");
   gridLabel.className = "trade-inv-col-label";
   gridLabel.textContent = t(lang, "trade.inventory_units_label");
-  gridCol.appendChild(gridLabel);
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.className = "trade-inv-grid-search";
+  inp.placeholder = t(lang, "trade.inventory_search");
+  inp.value = searchQ;
+  inp.autocomplete = "off";
+  inp.spellcheck = false;
+  gridHead.appendChild(gridLabel);
+  gridHead.appendChild(inp);
+  gridCol.appendChild(gridHead);
 
   const grid = document.createElement("div");
   grid.className = "trade-inv-grid";
