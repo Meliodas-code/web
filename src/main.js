@@ -2331,6 +2331,82 @@ function playPageIntro() {
   }, 1100);
 }
 
+function buildHomeCreatorsStrip() {
+  const strip = document.createElement("div");
+  strip.className = "home-creators";
+  for (const profile of CREDITS_PROFILES.slice(0, 2)) {
+    const chip = document.createElement("a");
+    chip.className = `home-creator-chip home-creator-chip--${profile.accent}`;
+    chip.href = "#/credits";
+    if (profile.avatar) {
+      const img = document.createElement("img");
+      img.src = assetUrl(profile.avatar);
+      img.alt = "";
+      chip.appendChild(img);
+    }
+    const meta = document.createElement("span");
+    meta.className = "home-creator-meta";
+    meta.innerHTML = `<strong>${escapeHtml(profile.handle)}</strong><span>${escapeHtml(t(lang, profile.roleKey))}</span>`;
+    chip.appendChild(meta);
+    strip.appendChild(chip);
+  }
+  return strip;
+}
+
+function buildHomePulseTeaser() {
+  const panel = document.createElement("section");
+  panel.className = "home-pulse";
+
+  const head = document.createElement("div");
+  head.className = "home-pulse-head";
+  head.innerHTML = `<h3>${escapeHtml(t(lang, "main.home_pulse_title"))}</h3>`;
+  const cta = document.createElement("button");
+  cta.type = "button";
+  cta.className = "home-pulse-cta";
+  cta.textContent = t(lang, "main.home_pulse_cta");
+  cta.onclick = () => navigate("#/predictions");
+  head.appendChild(cta);
+  panel.appendChild(head);
+
+  const rows = buildPredictions(units, vote_values, valueHistory);
+  const movers = rows
+    .filter(
+      (r) => r.base.trend === "up" || r.base.trend === "forecast_up",
+    )
+    .slice(0, 4);
+
+  if (!movers.length) {
+    const empty = document.createElement("p");
+    empty.className = "home-pulse-empty muted";
+    empty.textContent = t(lang, "main.home_pulse_empty");
+    panel.appendChild(empty);
+    return panel;
+  }
+
+  const list = document.createElement("div");
+  list.className = "home-pulse-list";
+  for (const row of movers) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = `home-pulse-item ${cardRarityClass(row.unit.rareza)}`.trim();
+    if (row.unit.imagen) {
+      const img = document.createElement("img");
+      img.src = assetUrl(row.unit.imagen);
+      img.alt = "";
+      item.appendChild(img);
+    }
+    const meta = document.createElement("span");
+    meta.className = "home-pulse-item-meta";
+    const sign = row.base.delta > 0 ? "+" : "";
+    meta.innerHTML = `<strong>${escapeHtml(unitDisplayName(row.unit))}</strong><em>${sign}${row.base.delta || "—"}</em>`;
+    item.appendChild(meta);
+    item.onclick = () => navigate("#/predictions");
+    list.appendChild(item);
+  }
+  panel.appendChild(list);
+  return panel;
+}
+
 function buildHomeView() {
   const d = document.createElement("div");
   d.className = "view-home";
@@ -2376,90 +2452,55 @@ function buildHomeView() {
       </p>
     </div>`;
   d.appendChild(hero);
+  d.appendChild(buildHomeCreatorsStrip());
+
+  const toolsHead = document.createElement("h2");
+  toolsHead.className = "home-section-title";
+  toolsHead.textContent = t(lang, "main.home_tools_title");
+  d.appendChild(toolsHead);
 
   const grid = document.createElement("div");
-  grid.className = "home-bento";
+  grid.className = "home-cards";
 
-  /** @type {Array<{klass:string, icon:string, heading:string, txt:string, goto:string, featured?:boolean}>} */
-  const cards = [
-    {
-      klass: "trade",
-      icon: "⇄",
-      heading: t(lang, "nav.trade"),
-      txt: t(lang, "main.trade_desc"),
-      goto: "#/trade",
-      featured: true,
-    },
-    {
-      klass: "calc",
-      icon: "∑",
-      heading: t(lang, "nav.calc"),
-      txt: t(lang, "main.calc_desc"),
-      goto: "#/calc",
-    },
-    {
-      klass: "values",
-      icon: "▦",
-      heading: t(lang, "nav.values"),
-      txt: t(lang, "main.values_desc"),
-      goto: "#/values",
-    },
-    {
-      klass: "predictions",
-      icon: "◈",
-      heading: t(lang, "nav.predictions"),
-      txt: t(lang, "main.predictions_desc"),
-      goto: "#/predictions",
-    },
-  ];
-  if (testerAccessAllowed()) {
-    cards.push({
-      klass: "tester",
-      icon: "⚙",
-      heading: t(lang, "nav.tester"),
-      txt: t(lang, "main.tester_desc"),
-      goto: "#/tester",
-    });
-  }
-
-  for (const c of cards) {
+  function card(klass, icon, heading, txt, goto) {
     const el = document.createElement("article");
-    el.className = [
-      "home-bento-card",
-      c.klass,
-      c.featured ? "home-bento-card--featured" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-
-    const top = document.createElement("div");
-    top.className = "home-bento-top";
+    el.className = `home-card ${klass}`.trim();
     const iconEl = document.createElement("div");
-    iconEl.className = "home-bento-icon";
+    iconEl.className = "home-card-icon";
     iconEl.setAttribute("aria-hidden", "true");
-    iconEl.textContent = c.icon;
+    iconEl.textContent = icon;
     const h3 = document.createElement("h3");
-    h3.textContent = c.heading;
-    top.appendChild(iconEl);
-    top.appendChild(h3);
-
+    h3.textContent = heading;
     const p = document.createElement("p");
-    p.className = "home-bento-desc";
-    p.textContent = c.txt;
-
+    p.className = "muted";
+    p.textContent = txt;
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "home-bento-cta";
-    b.innerHTML = `<span>${escapeHtml(t(lang, "main.open"))}</span><span aria-hidden="true">→</span>`;
-    b.onclick = () => navigate(c.goto);
-
-    el.appendChild(top);
+    b.textContent = t(lang, "main.open");
+    b.onclick = () => navigate(goto);
+    el.appendChild(iconEl);
+    el.appendChild(h3);
     el.appendChild(p);
     el.appendChild(b);
     grid.appendChild(el);
   }
 
+  card("calc", "∑", t(lang, "nav.calc"), t(lang, "main.calc_desc"), "#/calc");
+  card("trade", "⇄", t(lang, "nav.trade"), t(lang, "main.trade_desc"), "#/trade");
+  card("values", "▦", t(lang, "nav.values"), t(lang, "main.values_desc"), "#/values");
+  card(
+    "predictions",
+    "◈",
+    t(lang, "nav.predictions"),
+    t(lang, "main.predictions_desc"),
+    "#/predictions",
+  );
+  if (testerAccessAllowed()) {
+    card("tester", "⚙", t(lang, "nav.tester"), t(lang, "main.tester_desc"), "#/tester");
+  }
+
   d.appendChild(grid);
+  d.appendChild(buildHomePulseTeaser());
 
   const foot = document.createElement("p");
   foot.className = "home-foot muted";
