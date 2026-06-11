@@ -357,8 +357,8 @@ function unitDisplayName(u) {
 }
 
 const INCOMPATIBLE_VOTE_ICON_PATHS = [
-  "assets/incompatible.png",
   "assets/incompatible.jpg",
+  "assets/incompatible.png",
   "assets/incompatible.jpeg",
   "assets/incompatible.svg",
 ];
@@ -380,6 +380,7 @@ function setVoteIconImg(img, voteNums) {
     };
     return;
   }
+  img.classList.add("vote-icon--incompatible");
   let idx = 0;
   const tryNext = () => {
     if (idx >= INCOMPATIBLE_VOTE_ICON_PATHS.length) {
@@ -2331,82 +2332,6 @@ function playPageIntro() {
   }, 1100);
 }
 
-function buildHomeCreatorsStrip() {
-  const strip = document.createElement("div");
-  strip.className = "home-creators";
-  for (const profile of CREDITS_PROFILES.slice(0, 2)) {
-    const chip = document.createElement("a");
-    chip.className = `home-creator-chip home-creator-chip--${profile.accent}`;
-    chip.href = "#/credits";
-    if (profile.avatar) {
-      const img = document.createElement("img");
-      img.src = assetUrl(profile.avatar);
-      img.alt = "";
-      chip.appendChild(img);
-    }
-    const meta = document.createElement("span");
-    meta.className = "home-creator-meta";
-    meta.innerHTML = `<strong>${escapeHtml(profile.handle)}</strong><span>${escapeHtml(t(lang, profile.roleKey))}</span>`;
-    chip.appendChild(meta);
-    strip.appendChild(chip);
-  }
-  return strip;
-}
-
-function buildHomePulseTeaser() {
-  const panel = document.createElement("section");
-  panel.className = "home-pulse";
-
-  const head = document.createElement("div");
-  head.className = "home-pulse-head";
-  head.innerHTML = `<h3>${escapeHtml(t(lang, "main.home_pulse_title"))}</h3>`;
-  const cta = document.createElement("button");
-  cta.type = "button";
-  cta.className = "home-pulse-cta";
-  cta.textContent = t(lang, "main.home_pulse_cta");
-  cta.onclick = () => navigate("#/predictions");
-  head.appendChild(cta);
-  panel.appendChild(head);
-
-  const rows = buildPredictions(units, vote_values, valueHistory);
-  const movers = rows
-    .filter(
-      (r) => r.base.trend === "up" || r.base.trend === "forecast_up",
-    )
-    .slice(0, 4);
-
-  if (!movers.length) {
-    const empty = document.createElement("p");
-    empty.className = "home-pulse-empty muted";
-    empty.textContent = t(lang, "main.home_pulse_empty");
-    panel.appendChild(empty);
-    return panel;
-  }
-
-  const list = document.createElement("div");
-  list.className = "home-pulse-list";
-  for (const row of movers) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = `home-pulse-item ${cardRarityClass(row.unit.rareza)}`.trim();
-    if (row.unit.imagen) {
-      const img = document.createElement("img");
-      img.src = assetUrl(row.unit.imagen);
-      img.alt = "";
-      item.appendChild(img);
-    }
-    const meta = document.createElement("span");
-    meta.className = "home-pulse-item-meta";
-    const sign = row.base.delta > 0 ? "+" : "";
-    meta.innerHTML = `<strong>${escapeHtml(unitDisplayName(row.unit))}</strong><em>${sign}${row.base.delta || "—"}</em>`;
-    item.appendChild(meta);
-    item.onclick = () => navigate("#/predictions");
-    list.appendChild(item);
-  }
-  panel.appendChild(list);
-  return panel;
-}
-
 function buildHomeView() {
   const d = document.createElement("div");
   d.className = "view-home";
@@ -2423,41 +2348,16 @@ function buildHomeView() {
   const hero = document.createElement("section");
   hero.className = "home-hero";
   hero.innerHTML = `
-    <div class="home-hero-copy">
-      <p class="home-hero-kicker">${escapeHtml(t(lang, "main.home_tagline"))}</p>
-      <h1 class="home-hero-title">${escapeHtml(t(lang, "main.bienvenida"))}</h1>
-      <p class="home-hero-sub">${escapeHtml(t(lang, "main.home_subtitle"))}</p>
-      <div class="home-hero-badges">
-        <span class="home-hero-badge home-hero-badge--fan">${escapeHtml(t(lang, "main.home_badge"))}</span>
-        <span class="home-hero-badge home-hero-badge--live">${escapeHtml(t(lang, "main.home_stat_live"))}</span>
-      </div>
-      <p class="home-hero-note">${escapeHtml(t(lang, "main.home_fanmade_notice"))}</p>
+    <p class="home-hero-kicker">${escapeHtml(t(lang, "main.home_tagline"))}</p>
+    <h1 class="home-hero-title">${escapeHtml(t(lang, "main.bienvenida"))}</h1>
+    <p class="home-hero-sub">${escapeHtml(t(lang, "main.home_subtitle"))}</p>
+    <div class="home-hero-stats">
+      <span class="home-hero-stat-pill"><strong>${units.length}</strong> ${escapeHtml(t(lang, "main.home_stat_units"))}</span>
+      <span class="home-hero-stat-pill"><strong>13</strong> ${escapeHtml(t(lang, "main.home_stat_votes"))}</span>
+      <span class="home-hero-badge home-hero-badge--live">${escapeHtml(t(lang, "main.home_stat_live"))}</span>
     </div>
-    <div class="home-hero-panel">
-      <div class="home-hero-stat">
-        <span class="home-hero-stat-val">${units.length}</span>
-        <span class="home-hero-stat-lbl">${escapeHtml(t(lang, "main.home_stat_units"))}</span>
-      </div>
-      <div class="home-hero-stat">
-        <span class="home-hero-stat-val">13</span>
-        <span class="home-hero-stat-lbl">${escapeHtml(t(lang, "main.home_stat_votes"))}</span>
-      </div>
-      <div class="home-hero-stat">
-        <span class="home-hero-stat-val">Live</span>
-        <span class="home-hero-stat-lbl">${escapeHtml(t(lang, "main.home_stat_live"))}</span>
-      </div>
-      <p class="home-hero-credit muted">
-        ${escapeHtml(t(lang, "main.list_values_thanks"))}
-        <a href="${OFFICIAL_VALUE_LIST_URL}" target="_blank" rel="noopener noreferrer">${escapeHtml(t(lang, "main.official_list_link"))}</a>
-      </p>
-    </div>`;
+    <p class="home-hero-note">${escapeHtml(t(lang, "main.home_fanmade_notice"))}</p>`;
   d.appendChild(hero);
-  d.appendChild(buildHomeCreatorsStrip());
-
-  const toolsHead = document.createElement("h2");
-  toolsHead.className = "home-section-title";
-  toolsHead.textContent = t(lang, "main.home_tools_title");
-  d.appendChild(toolsHead);
 
   const grid = document.createElement("div");
   grid.className = "home-cards";
@@ -2500,14 +2400,28 @@ function buildHomeView() {
   }
 
   d.appendChild(grid);
-  d.appendChild(buildHomePulseTeaser());
 
-  const foot = document.createElement("p");
-  foot.className = "home-foot muted";
-  const a = document.createElement("a");
-  a.href = "#/credits";
-  a.textContent = `→ ${t(lang, "nav.credits")}`;
-  foot.appendChild(a);
+  const foot = document.createElement("footer");
+  foot.className = "home-foot";
+  const credit = document.createElement("p");
+  credit.className = "home-foot-credit muted";
+  credit.append(
+    document.createTextNode(`${t(lang, "main.list_values_thanks")} `),
+  );
+  const listLink = document.createElement("a");
+  listLink.href = OFFICIAL_VALUE_LIST_URL;
+  listLink.target = "_blank";
+  listLink.rel = "noopener noreferrer";
+  listLink.textContent = t(lang, "main.official_list_link");
+  credit.appendChild(listLink);
+  foot.appendChild(credit);
+  const links = document.createElement("p");
+  links.className = "home-foot-links muted";
+  const creditsA = document.createElement("a");
+  creditsA.href = "#/credits";
+  creditsA.textContent = t(lang, "nav.credits");
+  links.appendChild(creditsA);
+  foot.appendChild(links);
   d.appendChild(foot);
   return d;
 }
@@ -3122,6 +3036,36 @@ function buildPredictionTrendPill(trend, delta, prefix = "") {
   return pill;
 }
 
+function buildPredictionVoteGroupPill(group) {
+  const pill = document.createElement("span");
+  pill.className = [
+    "pred-trend",
+    "pred-vote-group",
+    `pred-trend--${group.trend}`,
+    group.isIncompatible ? "pred-vote-group--incompatible" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (group.isIncompatible) {
+    const img = document.createElement("img");
+    img.className = "vote-icon vote-icon--incompatible";
+    img.alt = t(lang, "values.vote_incompatibles");
+    setVoteIconImg(img, group.voteNums);
+    pill.appendChild(img);
+  }
+
+  const label = group.isIncompatible
+    ? t(lang, "values.vote_incompatibles")
+    : voteDisplayLabel(lang, group.voteNums[0]);
+  const deltaTxt =
+    group.delta !== 0 ? ` (${group.delta > 0 ? "+" : ""}${group.delta})` : "";
+  const txt = document.createElement("span");
+  txt.textContent = `${label}: ${group.current}${deltaTxt}`;
+  pill.appendChild(txt);
+  return pill;
+}
+
 function matchesPredictionFilter(row) {
   const t0 = row.base.trend;
   if (predictionsFilter === "all") {
@@ -3438,24 +3382,15 @@ function buildPredictionCard(row) {
 
   const trends = document.createElement("div");
   trends.className = "pred-card-trends";
-  trends.appendChild(buildPredictionTrendPill(row.base.trend, row.base.delta));
-  if (row.votes?.voto2) {
-    trends.appendChild(
-      buildPredictionTrendPill(
-        row.votes.voto2.trend,
-        row.votes.voto2.delta,
-        `${t(lang, "predictions.vote_label")}: `,
-      ),
-    );
-  }
-  if (row.votes?.voto13) {
-    trends.appendChild(
-      buildPredictionTrendPill(
-        row.votes.voto13.trend,
-        row.votes.voto13.delta,
-        `${t(lang, "predictions.vote13_label")}: `,
-      ),
-    );
+  trends.appendChild(
+    buildPredictionTrendPill(row.base.trend, row.base.delta, `${t(lang, "predictions.base_value")}: `),
+  );
+  const baseVal = Number(row.unit.valor) || 0;
+  for (const group of row.voteGroups || []) {
+    if (group.value === baseVal && group.trend === "stable" && group.delta === 0) {
+      continue;
+    }
+    trends.appendChild(buildPredictionVoteGroupPill(group));
   }
 
   const tip = document.createElement("p");
