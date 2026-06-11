@@ -141,8 +141,9 @@ function readTradeSuggestionsOpen() {
 
 /** @type {"all" | string} */
 let tradeSuggestionsOpen = readTradeSuggestionsOpen();
-/** @type {Set<string>} */
-let tradeOwnedUnits = loadOwnedUnits();
+/** @typedef {{ id: string, nombre: string, voteKey: string, qty: number }} OwnedInventoryEntry */
+/** @type {OwnedInventoryEntry[]} */
+let tradeOwnedInventory = loadOwnedInventory();
 /** @type {HTMLDialogElement | null} */
 let tradeInventoryDialogEl = null;
 let tradeRarityFilter =
@@ -421,28 +422,93 @@ function voteValueForUnit(unit, voteKey) {
   return uv[voteKey] ?? baseVal;
 }
 
-function loadOwnedUnits() {
+function ownedInventoryEntryId(nombre, voteKey) {
+  return `${nombre}|${voteKey}`;
+}
+
+function normalizeOwnedEntry(raw) {
+  if (!raw || !raw.nombre || !raw.voteKey) return null;
+  const qty = Math.max(1, Math.min(99, Number(raw.qty) || 1));
+  return {
+    id: raw.id || ownedInventoryEntryId(raw.nombre, raw.voteKey),
+    nombre: raw.nombre,
+    voteKey: raw.voteKey,
+    qty,
+  };
+}
+
+function loadOwnedInventory() {
   try {
     const raw = localStorage.getItem(OWNED_UNITS_STORAGE);
-    if (!raw) return new Set();
+    if (!raw) return [];
     const arr = JSON.parse(raw);
-    return new Set(Array.isArray(arr) ? arr.filter(Boolean) : []);
+    if (!Array.isArray(arr) || !arr.length) return [];
+    if (typeof arr[0] === "string") {
+      return arr
+        .filter(Boolean)
+        .map((nombre) =>
+          normalizeOwnedEntry({ nombre, voteKey: "voto1", qty: 1 }),
+        )
+        .filter(Boolean);
+    }
+    return arr.map(normalizeOwnedEntry).filter(Boolean);
   } catch {
-    return new Set();
+    return [];
   }
 }
 
-function saveOwnedUnits() {
+function saveOwnedInventory() {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(
     OWNED_UNITS_STORAGE,
-    JSON.stringify([...tradeOwnedUnits]),
+    JSON.stringify(tradeOwnedInventory),
   );
 }
 
 function resetTradeOwnedInventory() {
-  tradeOwnedUnits = new Set();
-  saveOwnedUnits();
+  tradeOwnedInventory = [];
+  saveOwnedInventory();
+}
+
+function ownedInventoryTotalQty() {
+  return tradeOwnedInventory.reduce((sum, e) => sum + e.qty, 0);
+}
+
+function ownedInventorySummary() {
+  return {
+    entries: tradeOwnedInventory.length,
+    qty: ownedInventoryTotalQty(),
+  };
+}
+
+function findUnitByName(nombre) {
+  return units.find((u) => u.nombre === nombre) || null;
+}
+
+function adjustOwnedDraftEntry(draft, nombre, voteKey, deltaQty) {
+  const id = ownedInventoryEntryId(nombre, voteKey);
+  const idx = draft.findIndex((e) => e.id === id);
+  if (idx >= 0) {
+    const next = draft[idx].qty + deltaQty;
+    if (next <= 0) draft.splice(idx, 1);
+    else draft[idx].qty = Math.min(99, next);
+    return;
+  }
+  if (deltaQty > 0) {
+    draft.push(
+      normalizeOwnedEntry({ id, nombre, voteKey, qty: deltaQty }),
+    );
+  }
+}
+
+function changeOwnedDraftVote(draft, entryId, nextVoteKey) {
+  const idx = draft.findIndex((e) => e.id === entryId);
+  if (idx < 0) return;
+  const entry = draft[idx];
+  if (entry.voteKey === nextVoteKey) return;
+  const qty = entry.qty;
+  draft.splice(idx, 1);
+  adjustOwnedDraftEntry(draft, entry.nombre, nextVoteKey, qty);
 }
 
 /** Votos compatibles con una unidad: cambian el valor o son HR/THO. */
@@ -519,84 +585,161 @@ function avgDemandOfSide(countsMap) {
   return n > 0 ? sum / n : null;
 }
 
-function scoreTradeSuggestion(gap, totalVal, suggestionUnits) {
-  const remain = Math.abs(gap - totalVal);
-  const matchPct = Math.max(0, Math.min(100, Math.round(100 - (remain / gap) * 100)));
-  let score = matchPct * 2.5;
-  if (remain <= 5) score += 30;
-  else if (remain <= 15) score += 18;
-  else if (remain <= 30) score += 8;
-
-  for (const u of suggestionUnits) {
-    const val = unitBaseTradeValue(u);
-    const demand = u.demanda ?? 5;
-    score += (10 - demand) * 2.2;
-    if (u.estabilidad === "stable") score += 10;
-    else if (u.estabilidad === "dropping") score -= 8;
-    if (val > gap * 1.35) score -= 12;
-    if (val < gap * 0.45) score -= 6;
-  }
-  return { score, matchPct, remain };
+function givePriorityScore(u) {
+  const demand = u.demanda ?? 5;
+  let score = (10 - demand) * 3.2;
+  if (u.estabilidad === "dropping") score += 14;
+  else if (u.estabilidad === "stable") score += 5;
+  return score;
 }
 
-/** @returns {Array<{type:"single"|"pair", units:Unit[], totalVal:number, remain:number, matchPct:number, score:number}>} */
-function findTradeSuggestions(gap, { onlyOwned = false } = {}) {
-  if (gap <= 0) return [];
+/** @param {Array<{u: Unit, voteKey: string, qty: number, val: number}>} picks */
+function scoreTradeCombo(gap, totalVal, picks, avgRecvDemand) {
+  const winMargin = gap - totalVal;
+  if (winMargin <= 0) return null;
 
-  const ranked = [...units]
-    .map((u) => ({
-      u,
-      val: unitBaseTradeValue(u),
-    }))
-    .filter((c) => c.val > 0)
-    .filter((c) => !onlyOwned || tradeOwnedUnits.has(c.u.nombre));
+  const fillPct = Math.max(0, Math.min(100, Math.round((totalVal / gap) * 100)));
+  let score = fillPct * 0.45;
 
-  const singles = ranked.map((c) => {
-    const scored = scoreTradeSuggestion(gap, c.val, [c.u]);
-    return {
-      type: /** @type {"single"} */ ("single"),
-      units: [c.u],
-      totalVal: c.val,
-      remain: scored.remain,
-      matchPct: scored.matchPct,
-      score: scored.score,
-    };
-  });
+  if (winMargin >= 1 && winMargin <= 12) score += 28;
+  else if (winMargin <= 25) score += 16;
+  else if (winMargin <= 45) score += 8;
+  else score -= Math.min(24, (winMargin - 45) * 0.35);
 
-  const pairs = [];
-  const pool = [...ranked].sort(
-    (a, b) =>
-      scoreTradeSuggestion(gap, b.val, [b.u]).score -
-      scoreTradeSuggestion(gap, a.val, [a.u]).score,
-  ).slice(0, 50);
-  for (let i = 0; i < pool.length; i++) {
-    for (let j = i + 1; j < pool.length; j++) {
-      const totalVal = pool[i].val + pool[j].val;
-      const units = [pool[i].u, pool[j].u];
-      const scored = scoreTradeSuggestion(gap, totalVal, units);
-      if (scored.remain > Math.max(18, gap * 0.28)) continue;
-      pairs.push({
-        type: /** @type {"pair"} */ ("pair"),
-        units,
-        totalVal,
-        remain: scored.remain,
-        matchPct: scored.matchPct,
-        score: scored.score,
+  let giveDemandSum = 0;
+  let giveN = 0;
+  for (const p of picks) {
+    giveDemandSum += (p.u.demanda ?? 5) * p.qty;
+    giveN += p.qty;
+    score += givePriorityScore(p.u) * p.qty * 0.85;
+  }
+  const avgGiveDemand = giveN > 0 ? giveDemandSum / giveN : 5;
+  if (avgRecvDemand !== null) {
+    score += (avgRecvDemand - avgGiveDemand) * 5.5;
+  }
+
+  if (giveN > 5) score -= (giveN - 5) * 2.5;
+
+  return { score, winMargin, fillPct, avgGiveDemand };
+}
+
+/**
+ * @typedef {{ u: Unit, voteKey: string, val: number, maxQty: number }} TradeSuggestItem
+ * @typedef {{ u: Unit, voteKey: string, qty: number, val: number }} TradeSuggestPick
+ * @typedef {{ picks: TradeSuggestPick[], totalVal: number, winMargin: number, fillPct: number, score: number, avgGiveDemand: number }} TradeSuggestCombo
+ */
+
+function buildTradeSuggestPool({ onlyOwned = false } = {}) {
+  /** @type {TradeSuggestItem[]} */
+  const pool = [];
+
+  if (onlyOwned && tradeOwnedInventory.length > 0) {
+    for (const entry of tradeOwnedInventory) {
+      const u = findUnitByName(entry.nombre);
+      if (!u) continue;
+      const val = voteValueForUnit(u, entry.voteKey);
+      if (val <= 0) continue;
+      pool.push({
+        u,
+        voteKey: entry.voteKey,
+        val,
+        maxQty: entry.qty,
       });
+    }
+    return pool;
+  }
+
+  for (const u of units) {
+    for (const { value, voteNums } of uniqueVoteEntriesForUnit(u)) {
+      if (value <= 0) continue;
+      const vk = voteKey(voteNums[0]);
+      pool.push({ u, voteKey: vk, val: value, maxQty: 3 });
     }
   }
 
-  const merged = [...singles, ...pairs]
-    .sort((a, b) => b.score - a.score || a.remain - b.remain)
-    .filter((sug, idx, arr) => {
-      const key = sug.units.map((u) => u.nombre).join("+");
-      return (
-        arr.findIndex((x) => x.units.map((u) => u.nombre).join("+") === key) ===
-        idx
-      );
-    });
+  return pool;
+}
 
-  return merged.slice(0, 5);
+/** @returns {TradeSuggestCombo[]} */
+function findTradeSuggestions(gap, { onlyOwned = false, avgRecvDemand = null } = {}) {
+  if (gap <= 1) return [];
+
+  const maxAdd = gap - 1;
+  let minAdd = Math.max(1, Math.floor(gap * 0.52));
+  const rawPool = buildTradeSuggestPool({ onlyOwned }).filter(
+    (item) => item.val <= maxAdd,
+  );
+  if (!rawPool.length) return [];
+
+  const pool = onlyOwned
+    ? rawPool
+    : [...rawPool]
+        .sort(
+          (a, b) =>
+            givePriorityScore(b.u) - b.val * 0.015 -
+            (givePriorityScore(a.u) - a.val * 0.015),
+        )
+        .slice(0, 55);
+
+  /** @type {TradeSuggestCombo[]} */
+  const results = [];
+  const seen = new Set();
+
+  function recordCombo(/** @type {TradeSuggestPick[]} */ picks, totalVal) {
+    if (totalVal <= 0 || totalVal > maxAdd) return;
+    const scored = scoreTradeCombo(gap, totalVal, picks, avgRecvDemand);
+    if (!scored) return;
+    const key = picks
+      .map((p) => `${p.u.nombre}:${p.voteKey}x${p.qty}`)
+      .sort()
+      .join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    results.push({
+      picks: picks.map((p) => ({ ...p })),
+      totalVal,
+      ...scored,
+    });
+  }
+
+  function dfs(
+    idx,
+    /** @type {TradeSuggestPick[]} */ picks,
+    totalVal,
+    totalQty,
+  ) {
+    if (totalVal > 0 && (totalVal >= minAdd || idx >= pool.length)) {
+      recordCombo(picks, totalVal);
+    }
+    if (idx >= pool.length || totalQty >= 8) return;
+
+    dfs(idx + 1, picks, totalVal, totalQty);
+
+    const item = pool[idx];
+    for (let q = 1; q <= item.maxQty; q++) {
+      const addVal = item.val * q;
+      if (totalVal + addVal > maxAdd || totalQty + q > 8) break;
+      picks.push({ u: item.u, voteKey: item.voteKey, qty: q, val: item.val });
+      dfs(idx + 1, picks, totalVal + addVal, totalQty + q);
+      picks.pop();
+    }
+  }
+
+  dfs(0, [], 0, 0);
+
+  if (!results.length && minAdd > 1) {
+    minAdd = 1;
+    dfs(0, [], 0, 0);
+  }
+
+  return results
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.totalVal - a.totalVal ||
+        a.winMargin - b.winMargin,
+    )
+    .slice(0, 6);
 }
 
 function ensureTradeInventoryDialog() {
@@ -620,6 +763,11 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
   const body = tradeInventoryDialogEl.querySelector("[data-inventory-body]");
   body.innerHTML = "";
 
+  const summary = {
+    entries: draft.length,
+    qty: draft.reduce((sum, e) => sum + e.qty, 0),
+  };
+
   const head = document.createElement("div");
   head.className = "trade-inventory-dialog-head";
   const h = document.createElement("h3");
@@ -629,7 +777,7 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
   hint.textContent = t(lang, "trade.inventory_hint");
   const count = document.createElement("p");
   count.className = "trade-inventory-count";
-  count.textContent = t(lang, "trade.inventory_count", { n: draft.size });
+  count.textContent = t(lang, "trade.inventory_count", summary);
   head.appendChild(h);
   head.appendChild(hint);
   head.appendChild(count);
@@ -646,25 +794,163 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
   searchWrap.appendChild(inp);
   body.appendChild(searchWrap);
 
+  if (draft.length > 0) {
+    const stockHead = document.createElement("div");
+    stockHead.className = "trade-inventory-stock-head";
+    stockHead.textContent = t(lang, "trade.inventory_stock_title");
+    body.appendChild(stockHead);
+
+    const stockList = document.createElement("div");
+    stockList.className = "trade-inventory-stock-list";
+    for (const entry of draft) {
+      const u = findUnitByName(entry.nombre);
+      if (!u) continue;
+
+      const row = document.createElement("div");
+      row.className = `trade-inventory-stock-row ${cardRarityClass(u.rareza)}`.trim();
+
+      const thumb = document.createElement("div");
+      thumb.className = "trade-inventory-stock-thumb";
+      const img = document.createElement("img");
+      img.src = u.imagen ? assetUrl(u.imagen) : "";
+      img.alt = "";
+      thumb.appendChild(img);
+
+      const meta = document.createElement("div");
+      meta.className = "trade-inventory-stock-meta";
+      const name = document.createElement("div");
+      name.className = "trade-inventory-stock-name";
+      name.textContent = unitDisplayName(u);
+      const valLine = document.createElement("div");
+      valLine.className = "trade-inventory-stock-val muted";
+      valLine.textContent = t(lang, "trade.inventory_entry_val", {
+        val: voteValueForUnit(u, entry.voteKey),
+      });
+      meta.appendChild(name);
+      meta.appendChild(valLine);
+
+      const voteWrap = document.createElement("label");
+      voteWrap.className = "trade-inventory-stock-vote";
+      const voteLbl = document.createElement("span");
+      voteLbl.textContent = t(lang, "trade.inventory_vote");
+      const voteSel = document.createElement("select");
+      for (const { value, voteNums } of uniqueVoteEntriesForUnit(u)) {
+        const vk = voteKey(voteNums[0]);
+        const opt = document.createElement("option");
+        opt.value = vk;
+        opt.textContent = voteNums
+          .map((vn) => voteDisplayLabel(lang, vn))
+          .join(" / ");
+        opt.title = `${value} pts`;
+        if (vk === entry.voteKey) opt.selected = true;
+        voteSel.appendChild(opt);
+      }
+      voteSel.onchange = () => {
+        changeOwnedDraftVote(draft, entry.id, voteSel.value);
+        tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
+        saveOwnedInventory();
+        renderTradeInventoryDialogBody(draft, inp.value);
+      };
+      voteWrap.appendChild(voteLbl);
+      voteWrap.appendChild(voteSel);
+
+      const qtyWrap = document.createElement("div");
+      qtyWrap.className = "trade-inventory-stock-qty";
+      const qtyLbl = document.createElement("span");
+      qtyLbl.textContent = t(lang, "trade.inventory_qty");
+      const minus = document.createElement("button");
+      minus.type = "button";
+      minus.className = "round minus";
+      minus.textContent = "−";
+      minus.onclick = () => {
+        adjustOwnedDraftEntry(draft, entry.nombre, entry.voteKey, -1);
+        tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
+        saveOwnedInventory();
+        renderTradeInventoryDialogBody(draft, inp.value);
+      };
+      const qtyVal = document.createElement("span");
+      qtyVal.className = "trade-inventory-stock-qty-val";
+      qtyVal.textContent = String(entry.qty);
+      const plus = document.createElement("button");
+      plus.type = "button";
+      plus.className = "round plus";
+      plus.textContent = "+";
+      plus.onclick = () => {
+        adjustOwnedDraftEntry(draft, entry.nombre, entry.voteKey, 1);
+        tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
+        saveOwnedInventory();
+        renderTradeInventoryDialogBody(draft, inp.value);
+      };
+      qtyWrap.appendChild(qtyLbl);
+      qtyWrap.appendChild(minus);
+      qtyWrap.appendChild(qtyVal);
+      qtyWrap.appendChild(plus);
+
+      const addVoteBtn = document.createElement("button");
+      addVoteBtn.type = "button";
+      addVoteBtn.className = "trade-inventory-add-vote";
+      addVoteBtn.textContent = t(lang, "trade.inventory_add_vote");
+      addVoteBtn.title = t(lang, "trade.inventory_add_vote_hint");
+      addVoteBtn.onclick = () => {
+        const votes = uniqueVoteEntriesForUnit(u);
+        const used = new Set(
+          draft.filter((e) => e.nombre === entry.nombre).map((e) => e.voteKey),
+        );
+        const next = votes.find(({ voteNums }) => !used.has(voteKey(voteNums[0])));
+        if (!next) return;
+        adjustOwnedDraftEntry(draft, entry.nombre, voteKey(next.voteNums[0]), 1);
+        tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
+        saveOwnedInventory();
+        renderTradeInventoryDialogBody(draft, inp.value);
+      };
+      if (
+        uniqueVoteEntriesForUnit(u).length <=
+        draft.filter((e) => e.nombre === entry.nombre).length
+      ) {
+        addVoteBtn.disabled = true;
+      }
+
+      row.appendChild(thumb);
+      row.appendChild(meta);
+      row.appendChild(voteWrap);
+      row.appendChild(qtyWrap);
+      row.appendChild(addVoteBtn);
+      stockList.appendChild(row);
+    }
+    body.appendChild(stockList);
+  }
+
+  const gridHead = document.createElement("div");
+  gridHead.className = "trade-inventory-grid-head muted";
+  gridHead.textContent = t(lang, "trade.inventory_grid_hint");
+  body.appendChild(gridHead);
+
   const grid = document.createElement("div");
   grid.className = "trade-inventory-pick-grid";
   const list = getFilteredUnits(searchQ, "all");
   for (const u of list) {
+    const inDraft = draft.some((e) => e.nombre === u.nombre);
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = `trade-inventory-pick ${cardRarityClass(u.rareza)}${draft.has(u.nombre) ? " trade-inventory-pick--on" : ""}`.trim();
+    btn.className = `trade-inventory-pick ${cardRarityClass(u.rareza)}${inDraft ? " trade-inventory-pick--on" : ""}`.trim();
     const img = document.createElement("img");
     img.src = u.imagen ? assetUrl(u.imagen) : "";
     img.alt = "";
     const lbl = document.createElement("span");
     lbl.textContent = unitDisplayName(u);
+    const qtyBadge = document.createElement("span");
+    qtyBadge.className = "trade-inventory-pick-qty";
+    const ownedQty = draft
+      .filter((e) => e.nombre === u.nombre)
+      .reduce((sum, e) => sum + e.qty, 0);
+    qtyBadge.textContent = ownedQty > 0 ? `×${ownedQty}` : "";
     btn.appendChild(img);
     btn.appendChild(lbl);
+    if (ownedQty > 0) btn.appendChild(qtyBadge);
     btn.onclick = () => {
-      if (draft.has(u.nombre)) draft.delete(u.nombre);
-      else draft.add(u.nombre);
-      tradeOwnedUnits = new Set(draft);
-      saveOwnedUnits();
+      adjustOwnedDraftEntry(draft, u.nombre, "voto1", 1);
+      tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
+      saveOwnedInventory();
       renderTradeInventoryDialogBody(draft, inp.value);
     };
     grid.appendChild(btn);
@@ -680,13 +966,13 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
   clearBtn.textContent = t(lang, "trade.inventory_clear");
   saveBtn.textContent = t(lang, "trade.inventory_save");
   clearBtn.onclick = () => {
-    draft.clear();
+    draft.length = 0;
     resetTradeOwnedInventory();
     renderTradeInventoryDialogBody(draft, inp.value);
   };
   saveBtn.onclick = () => {
-    tradeOwnedUnits = new Set(draft);
-    saveOwnedUnits();
+    tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
+    saveOwnedInventory();
     tradeInventoryDialogEl.close();
     renderApp();
   };
@@ -694,7 +980,7 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
 
 function openTradeInventoryDialog() {
   ensureTradeInventoryDialog();
-  const draft = new Set(tradeOwnedUnits);
+  const draft = tradeOwnedInventory.map((e) => ({ ...e }));
   renderTradeInventoryDialogBody(draft, "");
   tradeInventoryDialogEl.showModal();
 }
@@ -709,9 +995,19 @@ function buildSuggestUnitThumb(u, { small = false } = {}) {
   return wrap;
 }
 
-function applyTradeSuggestion(suggestionUnits) {
-  for (const u of suggestionUnits) {
-    adjustTradeVotes("left", u.nombre, "voto1", 1);
+function formatSuggestPickLabel(pick) {
+  const name = unitDisplayName(pick.u);
+  const voteNum = Number(String(pick.voteKey).replace("voto", "")) || 1;
+  const voteLbl = voteDisplayLabel(lang, voteNum);
+  if (pick.qty > 1) {
+    return `${name} ×${pick.qty} (${voteLbl})`;
+  }
+  return `${name} (${voteLbl})`;
+}
+
+function applyTradeSuggestion(picks) {
+  for (const p of picks) {
+    adjustTradeVotes("left", p.u.nombre, p.voteKey, p.qty);
   }
   renderApp();
 }
@@ -735,17 +1031,17 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
   const invActions = document.createElement("div");
   invActions.className = "trade-inventory-actions";
 
+  const invSummary = ownedInventorySummary();
+
   const invBtn = document.createElement("button");
   invBtn.type = "button";
   invBtn.className = "trade-inventory-open-btn";
   invBtn.textContent = t(lang, "trade.inventory_open");
-  if (tradeOwnedUnits.size > 0) {
-    invBtn.title = t(lang, "trade.suggest_from_owned", {
-      n: tradeOwnedUnits.size,
-    });
+  if (invSummary.entries > 0) {
+    invBtn.title = t(lang, "trade.suggest_from_owned", invSummary);
     const badge = document.createElement("span");
     badge.className = "trade-inventory-open-badge";
-    badge.textContent = String(tradeOwnedUnits.size);
+    badge.textContent = String(invSummary.qty);
     invBtn.appendChild(badge);
   }
   invBtn.onclick = () => openTradeInventoryDialog();
@@ -754,7 +1050,7 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
   resetInvBtn.type = "button";
   resetInvBtn.className = "trade-inventory-reset-btn";
   resetInvBtn.textContent = t(lang, "trade.inventory_reset");
-  resetInvBtn.disabled = tradeOwnedUnits.size === 0;
+  resetInvBtn.disabled = invSummary.entries === 0;
   resetInvBtn.title = t(lang, "trade.inventory_reset_hint");
   resetInvBtn.onclick = () => {
     resetTradeOwnedInventory();
@@ -768,12 +1064,10 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
   head.appendChild(invActions);
   panel.appendChild(head);
 
-  if (tradeOwnedUnits.size > 0) {
+  if (invSummary.entries > 0) {
     const savedNote = document.createElement("p");
     savedNote.className = "trade-inventory-saved muted";
-    savedNote.textContent = t(lang, "trade.inventory_saved", {
-      n: tradeOwnedUnits.size,
-    });
+    savedNote.textContent = t(lang, "trade.inventory_saved", invSummary);
     panel.appendChild(savedNote);
   }
 
@@ -799,8 +1093,15 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
     return panel;
   }
 
-  status.innerHTML = `<strong>${escapeHtml(t(lang, "trade.suggest_need_more", { gap }))}</strong>`;
+  status.innerHTML = `<strong>${escapeHtml(
+    t(lang, "trade.suggest_need_more", { gap, max: Math.max(1, gap - 1) }),
+  )}</strong>`;
   panel.appendChild(status);
+
+  const strategy = document.createElement("p");
+  strategy.className = "trade-suggestions-strategy muted";
+  strategy.textContent = t(lang, "trade.suggest_strategy");
+  panel.appendChild(strategy);
 
   const avgDem = avgDemandOfSide(tradeRightCounts);
   if (avgDem !== null) {
@@ -814,15 +1115,16 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
 
   const list = document.createElement("div");
   list.className = "trade-suggestions-list";
-  const useOwned = tradeOwnedUnits.size > 0;
-  let suggestions = findTradeSuggestions(gap, { onlyOwned: useOwned });
+  const useOwned = invSummary.entries > 0;
+  let suggestions = findTradeSuggestions(gap, {
+    onlyOwned: useOwned,
+    avgRecvDemand: avgDem,
+  });
 
   if (useOwned) {
     const ownedNote = document.createElement("p");
     ownedNote.className = "trade-suggestions-owned muted";
-    ownedNote.textContent = t(lang, "trade.suggest_from_owned", {
-      n: tradeOwnedUnits.size,
-    });
+    ownedNote.textContent = t(lang, "trade.suggest_from_owned", invSummary);
     panel.appendChild(ownedNote);
   }
 
@@ -836,7 +1138,7 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
 
   suggestions.forEach((sug, idx) => {
     const item = document.createElement("article");
-    item.className = `trade-suggest-card ${cardRarityClass(sug.units[0].rareza)}`.trim();
+    item.className = `trade-suggest-card ${cardRarityClass(sug.picks[0].u.rareza)}`.trim();
 
     const rank = document.createElement("span");
     rank.className = "trade-suggest-rank";
@@ -847,8 +1149,17 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
 
     const visuals = document.createElement("div");
     visuals.className = "trade-suggest-visuals";
-    for (const u of sug.units) {
-      visuals.appendChild(buildSuggestUnitThumb(u, { small: sug.type === "pair" }));
+    for (const pick of sug.picks) {
+      const thumbWrap = buildSuggestUnitThumb(pick.u, {
+        small: sug.picks.length > 1,
+      });
+      if (pick.qty > 1) {
+        const qtyTag = document.createElement("span");
+        qtyTag.className = "trade-suggest-thumb-qty";
+        qtyTag.textContent = `×${pick.qty}`;
+        thumbWrap.appendChild(qtyTag);
+      }
+      visuals.appendChild(thumbWrap);
     }
 
     const body = document.createElement("div");
@@ -856,40 +1167,39 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
 
     const names = document.createElement("div");
     names.className = "trade-suggest-names";
-    names.textContent = sug.units.map((u) => unitDisplayName(u)).join(" + ");
+    names.textContent = sug.picks.map(formatSuggestPickLabel).join(" + ");
 
     const chips = document.createElement("div");
     chips.className = "trade-suggest-chips";
     const valChip = document.createElement("span");
     valChip.className = "trade-suggest-chip trade-suggest-chip--val";
-    valChip.textContent = `+${sug.totalVal}`;
+    valChip.textContent = t(lang, "trade.suggest_offer", { val: sug.totalVal });
     chips.appendChild(valChip);
 
-    const remainChip = document.createElement("span");
-    remainChip.className = "trade-suggest-chip trade-suggest-chip--gap";
-    remainChip.textContent = t(lang, "trade.suggest_pts_short", {
-      remain: sug.remain,
+    const winChip = document.createElement("span");
+    winChip.className = "trade-suggest-chip trade-suggest-chip--win";
+    winChip.textContent = t(lang, "trade.suggest_win_margin", {
+      margin: sug.winMargin,
     });
-    chips.appendChild(remainChip);
+    chips.appendChild(winChip);
 
-    for (const u of sug.units) {
-      const demChip = document.createElement("span");
-      demChip.className = "trade-suggest-chip trade-suggest-chip--dem";
-      demChip.textContent = `${u.demanda ?? "—"}/10`;
-      demChip.title = stabilityLabel(lang, u.estabilidad || "fluctuating", t);
-      chips.appendChild(demChip);
-    }
+    const giveDemChip = document.createElement("span");
+    giveDemChip.className = "trade-suggest-chip trade-suggest-chip--dem";
+    giveDemChip.textContent = t(lang, "trade.suggest_give_demand", {
+      dem: sug.avgGiveDemand.toFixed(1),
+    });
+    chips.appendChild(giveDemChip);
 
     const meter = document.createElement("div");
     meter.className = "trade-suggest-meter";
-    meter.title = t(lang, "trade.suggest_match", { pct: sug.matchPct });
+    meter.title = t(lang, "trade.suggest_match", { pct: sug.fillPct });
     const fill = document.createElement("div");
     fill.className = "trade-suggest-meter-fill";
-    fill.style.width = `${sug.matchPct}%`;
+    fill.style.width = `${sug.fillPct}%`;
     meter.appendChild(fill);
     const meterLbl = document.createElement("span");
     meterLbl.className = "trade-suggest-meter-label";
-    meterLbl.textContent = t(lang, "trade.suggest_match", { pct: sug.matchPct });
+    meterLbl.textContent = t(lang, "trade.suggest_match", { pct: sug.fillPct });
     meter.appendChild(meterLbl);
 
     body.appendChild(names);
@@ -900,7 +1210,7 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
     applyBtn.type = "button";
     applyBtn.className = "trade-suggest-apply";
     applyBtn.textContent = t(lang, "trade.suggest_apply");
-    applyBtn.onclick = () => applyTradeSuggestion(sug.units);
+    applyBtn.onclick = () => applyTradeSuggestion(sug.picks);
 
     item.appendChild(rank);
     item.appendChild(visuals);
