@@ -264,6 +264,9 @@ export const I18N = {
       score_hint: "Puntuación compuesta: subidas/bajadas + votos.",
       showing_count: "Mostrando {shown} de {total} unidades",
       section_count: "{count} unidades",
+      spotlight_title: "Movimientos destacados",
+      spotlight_risers: "Subiendo ahora",
+      spotlight_fallers: "Bajando ahora",
     },
     credits: {
       title: "CRÉDITOS",
@@ -553,6 +556,9 @@ export const I18N = {
       score_hint: "Composite score from trends and votes.",
       showing_count: "Showing {shown} of {total} units",
       section_count: "{count} units",
+      spotlight_title: "Featured movers",
+      spotlight_risers: "Rising now",
+      spotlight_fallers: "Falling now",
     },
     credits: {
       title: "CREDITS",
