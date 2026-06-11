@@ -356,6 +356,42 @@ function unitDisplayName(u) {
   return lang === "en" ? u.nombre_en || u.nombre : u.nombre;
 }
 
+const INCOMPATIBLE_VOTE_ICON_PATHS = [
+  "assets/incompatible.png",
+  "assets/incompatible.jpg",
+  "assets/incompatible.jpeg",
+  "assets/incompatible.svg",
+];
+
+function createIncompatibleVoteFallback() {
+  const span = document.createElement("span");
+  span.className = "vote-icon vote-icon--incompatible-fallback";
+  span.title = t(lang, "values.vote_incompatibles");
+  span.setAttribute("aria-hidden", "true");
+  return span;
+}
+
+function setVoteIconImg(img, voteNums) {
+  if (voteNums.length <= 1) {
+    const vn = voteNums[0] || 1;
+    img.src = assetUrl(`assets/votos/voto${vn}.png`);
+    img.onerror = () => {
+      img.replaceWith(document.createTextNode(`V${vn}`));
+    };
+    return;
+  }
+  let idx = 0;
+  const tryNext = () => {
+    if (idx >= INCOMPATIBLE_VOTE_ICON_PATHS.length) {
+      img.replaceWith(createIncompatibleVoteFallback());
+      return;
+    }
+    img.src = assetUrl(INCOMPATIBLE_VOTE_ICON_PATHS[idx++]);
+  };
+  img.onerror = tryNext;
+  tryNext();
+}
+
 function buildDemandScoreBadge(u) {
   const badge = document.createElement("span");
   const tier = demandScoreTier(u.demanda);
@@ -974,14 +1010,12 @@ function buildInventoryDetailPanel(u, draft, refresh) {
     row.className = "vote-line trade-inv-vote-line";
 
     const voteImg = document.createElement("img");
-    voteImg.alt = voteDisplayLabel(lang, voteNums[0]);
-    voteImg.src =
+    voteImg.className = "vote-icon";
+    voteImg.alt =
       voteNums.length > 1
-        ? assetUrl("assets/incompatible.png")
-        : assetUrl(`assets/votos/voto${voteNums[0]}.png`);
-    voteImg.onerror = () => {
-      voteImg.replaceWith(document.createTextNode(`V${voteNums[0]}`));
-    };
+        ? t(lang, "values.vote_incompatibles")
+        : voteDisplayLabel(lang, voteNums[0]);
+    setVoteIconImg(voteImg, voteNums);
 
     const info = document.createElement("span");
     info.className = "val-info";
@@ -1191,6 +1225,111 @@ function applyTradeSuggestion(picks) {
   renderApp();
 }
 
+function buildTradeSuggestionCard(sug, idx) {
+  const item = document.createElement("article");
+  item.className = `trade-suggest-card ${cardRarityClass(sug.picks[0].u.rareza)}`.trim();
+  if (idx === 0) item.classList.add("trade-suggest-card--best");
+
+  const header = document.createElement("div");
+  header.className = "trade-suggest-header";
+
+  const rank = document.createElement("span");
+  rank.className = "trade-suggest-rank";
+  rank.textContent =
+    idx === 0
+      ? t(lang, "trade.suggest_best")
+      : t(lang, "trade.suggest_rank", { n: idx + 1 });
+
+  const matchWrap = document.createElement("div");
+  matchWrap.className = "trade-suggest-match";
+  matchWrap.title = t(lang, "trade.suggest_match", { pct: sug.fillPct });
+  const matchLbl = document.createElement("span");
+  matchLbl.className = "trade-suggest-match-label";
+  matchLbl.textContent = t(lang, "trade.suggest_match", { pct: sug.fillPct });
+  const meter = document.createElement("div");
+  meter.className = "trade-suggest-meter";
+  const fill = document.createElement("div");
+  fill.className = "trade-suggest-meter-fill";
+  fill.style.width = `${sug.fillPct}%`;
+  meter.appendChild(fill);
+  matchWrap.appendChild(matchLbl);
+  matchWrap.appendChild(meter);
+  header.appendChild(rank);
+  header.appendChild(matchWrap);
+
+  const picksList = document.createElement("ul");
+  picksList.className = "trade-suggest-picks";
+  for (const pick of sug.picks) {
+    const li = document.createElement("li");
+    li.className = `trade-suggest-pick ${cardRarityClass(pick.u.rareza)}`.trim();
+
+    const thumbWrap = buildSuggestUnitThumb(pick.u);
+    if (pick.qty > 1) {
+      const qtyTag = document.createElement("span");
+      qtyTag.className = "trade-suggest-thumb-qty";
+      qtyTag.textContent = `×${pick.qty}`;
+      thumbWrap.appendChild(qtyTag);
+    }
+
+    const pickMeta = document.createElement("div");
+    pickMeta.className = "trade-suggest-pick-meta";
+    const pickName = document.createElement("span");
+    pickName.className = "trade-suggest-pick-name";
+    pickName.textContent = unitDisplayName(pick.u);
+    const pickSub = document.createElement("span");
+    pickSub.className = "trade-suggest-pick-sub muted";
+    pickSub.textContent = formatSuggestPickLabel(pick);
+    pickMeta.appendChild(pickName);
+    pickMeta.appendChild(pickSub);
+
+    const pickVal = document.createElement("span");
+    pickVal.className = "trade-suggest-pick-val";
+    pickVal.textContent = `${pick.val * pick.qty} pts`;
+
+    li.appendChild(thumbWrap);
+    li.appendChild(pickMeta);
+    li.appendChild(pickVal);
+    picksList.appendChild(li);
+  }
+
+  const stats = document.createElement("div");
+  stats.className = "trade-suggest-stats";
+  for (const [cls, label, value] of [
+    [
+      "trade-suggest-stat--val",
+      lang === "es" ? "Oferta" : "Offer",
+      `+${sug.totalVal} pts`,
+    ],
+    [
+      "trade-suggest-stat--win",
+      lang === "es" ? "Ventaja" : "Margin",
+      `+${sug.winMargin} pts`,
+    ],
+    [
+      "trade-suggest-stat--dem",
+      t(lang, "demand.demand_score"),
+      `${sug.avgGiveDemand.toFixed(1)}/10`,
+    ],
+  ]) {
+    const stat = document.createElement("div");
+    stat.className = `trade-suggest-stat ${cls}`;
+    stat.innerHTML = `<span class="trade-suggest-stat-lbl">${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+    stats.appendChild(stat);
+  }
+
+  const applyBtn = document.createElement("button");
+  applyBtn.type = "button";
+  applyBtn.className = "trade-suggest-apply";
+  applyBtn.textContent = t(lang, "trade.suggest_apply");
+  applyBtn.onclick = () => applyTradeSuggestion(sug.picks);
+
+  item.appendChild(header);
+  item.appendChild(picksList);
+  item.appendChild(stats);
+  item.appendChild(applyBtn);
+  return item;
+}
+
 function buildTradeSuggestionsPanel(leftT, rightT) {
   const panel = document.createElement("section");
   panel.className = "trade-suggestions";
@@ -1329,86 +1468,7 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
 
   suggestions.forEach((sug, idx) => {
     if (!sug.picks?.length) return;
-    const item = document.createElement("article");
-    item.className = `trade-suggest-card ${cardRarityClass(sug.picks[0].u.rareza)}`.trim();
-
-    const rank = document.createElement("span");
-    rank.className = "trade-suggest-rank";
-    rank.textContent =
-      idx === 0
-        ? t(lang, "trade.suggest_best")
-        : t(lang, "trade.suggest_rank", { n: idx + 1 });
-
-    const visuals = document.createElement("div");
-    visuals.className = "trade-suggest-visuals";
-    for (const pick of sug.picks) {
-      const thumbWrap = buildSuggestUnitThumb(pick.u, {
-        small: sug.picks.length > 1,
-      });
-      if (pick.qty > 1) {
-        const qtyTag = document.createElement("span");
-        qtyTag.className = "trade-suggest-thumb-qty";
-        qtyTag.textContent = `×${pick.qty}`;
-        thumbWrap.appendChild(qtyTag);
-      }
-      visuals.appendChild(thumbWrap);
-    }
-
-    const body = document.createElement("div");
-    body.className = "trade-suggest-body";
-
-    const names = document.createElement("div");
-    names.className = "trade-suggest-names";
-    names.textContent = sug.picks.map(formatSuggestPickLabel).join(" + ");
-
-    const chips = document.createElement("div");
-    chips.className = "trade-suggest-chips";
-    const valChip = document.createElement("span");
-    valChip.className = "trade-suggest-chip trade-suggest-chip--val";
-    valChip.textContent = t(lang, "trade.suggest_offer", { val: sug.totalVal });
-    chips.appendChild(valChip);
-
-    const winChip = document.createElement("span");
-    winChip.className = "trade-suggest-chip trade-suggest-chip--win";
-    winChip.textContent = t(lang, "trade.suggest_win_margin", {
-      margin: sug.winMargin,
-    });
-    chips.appendChild(winChip);
-
-    const giveDemChip = document.createElement("span");
-    giveDemChip.className = "trade-suggest-chip trade-suggest-chip--dem";
-    giveDemChip.textContent = t(lang, "trade.suggest_give_demand", {
-      dem: sug.avgGiveDemand.toFixed(1),
-    });
-    chips.appendChild(giveDemChip);
-
-    const meter = document.createElement("div");
-    meter.className = "trade-suggest-meter";
-    meter.title = t(lang, "trade.suggest_match", { pct: sug.fillPct });
-    const fill = document.createElement("div");
-    fill.className = "trade-suggest-meter-fill";
-    fill.style.width = `${sug.fillPct}%`;
-    meter.appendChild(fill);
-    const meterLbl = document.createElement("span");
-    meterLbl.className = "trade-suggest-meter-label";
-    meterLbl.textContent = t(lang, "trade.suggest_match", { pct: sug.fillPct });
-    meter.appendChild(meterLbl);
-
-    body.appendChild(names);
-    body.appendChild(chips);
-    body.appendChild(meter);
-
-    const applyBtn = document.createElement("button");
-    applyBtn.type = "button";
-    applyBtn.className = "trade-suggest-apply";
-    applyBtn.textContent = t(lang, "trade.suggest_apply");
-    applyBtn.onclick = () => applyTradeSuggestion(sug.picks);
-
-    item.appendChild(rank);
-    item.appendChild(visuals);
-    item.appendChild(body);
-    item.appendChild(applyBtn);
-    list.appendChild(item);
+    list.appendChild(buildTradeSuggestionCard(sug, idx));
   });
 
   panel.appendChild(list);
@@ -2275,89 +2335,134 @@ function buildHomeView() {
   const d = document.createElement("div");
   d.className = "view-home";
 
-  const disclaimer = document.createElement("div");
-  disclaimer.className = "fanmade-banner";
-  disclaimer.innerHTML = `<strong>${escapeHtml(t(lang, "main.home_badge"))}</strong> — ${escapeHtml(t(lang, "main.home_fanmade_notice"))}`;
-  d.appendChild(disclaimer);
+  const backdrop = document.createElement("div");
+  backdrop.className = "home-backdrop";
+  backdrop.setAttribute("aria-hidden", "true");
+  backdrop.innerHTML = `
+    <div class="home-backdrop-orb home-backdrop-orb--a"></div>
+    <div class="home-backdrop-orb home-backdrop-orb--b"></div>
+    <div class="home-backdrop-grid"></div>`;
+  d.appendChild(backdrop);
 
   const hero = document.createElement("section");
-  hero.className = "hero hero--fanmade";
+  hero.className = "home-hero";
   hero.innerHTML = `
-    <p class="hero-kicker">${escapeHtml(t(lang, "main.home_tagline"))}</p>
-    <h2>${escapeHtml(t(lang, "main.bienvenida"))}</h2>
-    <p class="hero-sub muted">${escapeHtml(t(lang, "main.home_subtitle"))}</p>
-    <div class="hero-badges">
-      <span class="hero-badge hero-badge--fanmade">${escapeHtml(t(lang, "main.home_badge"))}</span>
-      <span class="hero-badge hero-badge--live">${escapeHtml(t(lang, "main.home_stat_live"))}</span>
+    <div class="home-hero-copy">
+      <p class="home-hero-kicker">${escapeHtml(t(lang, "main.home_tagline"))}</p>
+      <h1 class="home-hero-title">${escapeHtml(t(lang, "main.bienvenida"))}</h1>
+      <p class="home-hero-sub">${escapeHtml(t(lang, "main.home_subtitle"))}</p>
+      <div class="home-hero-badges">
+        <span class="home-hero-badge home-hero-badge--fan">${escapeHtml(t(lang, "main.home_badge"))}</span>
+        <span class="home-hero-badge home-hero-badge--live">${escapeHtml(t(lang, "main.home_stat_live"))}</span>
+      </div>
+      <p class="home-hero-note">${escapeHtml(t(lang, "main.home_fanmade_notice"))}</p>
+    </div>
+    <div class="home-hero-panel">
+      <div class="home-hero-stat">
+        <span class="home-hero-stat-val">${units.length}</span>
+        <span class="home-hero-stat-lbl">${escapeHtml(t(lang, "main.home_stat_units"))}</span>
+      </div>
+      <div class="home-hero-stat">
+        <span class="home-hero-stat-val">13</span>
+        <span class="home-hero-stat-lbl">${escapeHtml(t(lang, "main.home_stat_votes"))}</span>
+      </div>
+      <div class="home-hero-stat">
+        <span class="home-hero-stat-val">Live</span>
+        <span class="home-hero-stat-lbl">${escapeHtml(t(lang, "main.home_stat_live"))}</span>
+      </div>
+      <p class="home-hero-credit muted">
+        ${escapeHtml(t(lang, "main.list_values_thanks"))}
+        <a href="${OFFICIAL_VALUE_LIST_URL}" target="_blank" rel="noopener noreferrer">${escapeHtml(t(lang, "main.official_list_link"))}</a>
+      </p>
     </div>`;
-
-  const stats = document.createElement("div");
-  stats.className = "hero-stats";
-  const statItems = [
-    [String(units.length), t(lang, "main.home_stat_units")],
-    ["13", t(lang, "main.home_stat_votes")],
-    ["✓", t(lang, "main.home_stat_live")],
-  ];
-  for (const [val, lbl] of statItems) {
-    const cell = document.createElement("div");
-    cell.className = "hero-stat";
-    cell.innerHTML = `<span class="hero-stat-val">${escapeHtml(val)}</span><span class="hero-stat-lbl">${escapeHtml(lbl)}</span>`;
-    stats.appendChild(cell);
-  }
-  hero.appendChild(stats);
-
-  const thanks = document.createElement("p");
-  thanks.className = "muted hero-value-list-credit";
-  thanks.append(
-    document.createTextNode(`${t(lang, "main.list_values_thanks")} `),
-  );
-  const listLink = document.createElement("a");
-  listLink.href = OFFICIAL_VALUE_LIST_URL;
-  listLink.target = "_blank";
-  listLink.rel = "noopener noreferrer";
-  listLink.textContent = t(lang, "main.official_list_link");
-  thanks.appendChild(listLink);
-  hero.appendChild(thanks);
   d.appendChild(hero);
 
   const grid = document.createElement("div");
-  grid.className = "home-cards";
+  grid.className = "home-bento";
 
-  function card(klass, icon, heading, txt, goto) {
+  /** @type {Array<{klass:string, icon:string, heading:string, txt:string, goto:string, featured?:boolean}>} */
+  const cards = [
+    {
+      klass: "trade",
+      icon: "⇄",
+      heading: t(lang, "nav.trade"),
+      txt: t(lang, "main.trade_desc"),
+      goto: "#/trade",
+      featured: true,
+    },
+    {
+      klass: "calc",
+      icon: "∑",
+      heading: t(lang, "nav.calc"),
+      txt: t(lang, "main.calc_desc"),
+      goto: "#/calc",
+    },
+    {
+      klass: "values",
+      icon: "▦",
+      heading: t(lang, "nav.values"),
+      txt: t(lang, "main.values_desc"),
+      goto: "#/values",
+    },
+    {
+      klass: "predictions",
+      icon: "◈",
+      heading: t(lang, "nav.predictions"),
+      txt: t(lang, "main.predictions_desc"),
+      goto: "#/predictions",
+    },
+  ];
+  if (testerAccessAllowed()) {
+    cards.push({
+      klass: "tester",
+      icon: "⚙",
+      heading: t(lang, "nav.tester"),
+      txt: t(lang, "main.tester_desc"),
+      goto: "#/tester",
+    });
+  }
+
+  for (const c of cards) {
     const el = document.createElement("article");
-    el.className = `home-card ${klass}`.trim();
+    el.className = [
+      "home-bento-card",
+      c.klass,
+      c.featured ? "home-bento-card--featured" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const top = document.createElement("div");
+    top.className = "home-bento-top";
     const iconEl = document.createElement("div");
-    iconEl.className = "home-card-icon";
+    iconEl.className = "home-bento-icon";
     iconEl.setAttribute("aria-hidden", "true");
-    iconEl.textContent = icon;
+    iconEl.textContent = c.icon;
     const h3 = document.createElement("h3");
-    h3.textContent = heading;
+    h3.textContent = c.heading;
+    top.appendChild(iconEl);
+    top.appendChild(h3);
+
     const p = document.createElement("p");
-    p.className = "muted";
-    p.textContent = txt;
+    p.className = "home-bento-desc";
+    p.textContent = c.txt;
+
     const b = document.createElement("button");
     b.type = "button";
-    b.textContent = t(lang, "main.open");
-    b.onclick = () => navigate(goto);
-    el.appendChild(iconEl);
-    el.appendChild(h3);
+    b.className = "home-bento-cta";
+    b.innerHTML = `<span>${escapeHtml(t(lang, "main.open"))}</span><span aria-hidden="true">→</span>`;
+    b.onclick = () => navigate(c.goto);
+
+    el.appendChild(top);
     el.appendChild(p);
     el.appendChild(b);
     grid.appendChild(el);
   }
 
-  card("calc", "∑", t(lang, "nav.calc"), t(lang, "main.calc_desc"), "#/calc");
-  card("trade", "⇄", t(lang, "nav.trade"), t(lang, "main.trade_desc"), "#/trade");
-  card("values", "▦", t(lang, "nav.values"), t(lang, "main.values_desc"), "#/values");
-  card("predictions", "◈", t(lang, "nav.predictions"), t(lang, "main.predictions_desc"), "#/predictions");
-  if (testerAccessAllowed()) {
-    card("tester", "⚙", t(lang, "nav.tester"), t(lang, "main.tester_desc"), "#/tester");
-  }
-
   d.appendChild(grid);
 
   const foot = document.createElement("p");
-  foot.className = "muted foot-credits-link";
+  foot.className = "home-foot muted";
   const a = document.createElement("a");
   a.href = "#/credits";
   a.textContent = `→ ${t(lang, "nav.credits")}`;
@@ -2762,12 +2867,12 @@ function buildValuesVotePillsCell(u) {
     pill.title = labels.join(" · ");
 
     const img = document.createElement("img");
-    img.src =
+    img.className = "vote-icon";
+    img.alt =
       voteNums.length > 1
-        ? assetUrl("assets/incompatible.png")
-        : assetUrl(`assets/votos/voto${primaryVn}.png`);
-    img.alt = "";
-    img.onerror = () => img.remove();
+        ? t(lang, "values.vote_incompatibles")
+        : labels[0];
+    setVoteIconImg(img, voteNums);
 
     const lbl = document.createElement("span");
     lbl.className = "values-vote-pill-label";
@@ -3167,19 +3272,101 @@ function buildPredictionScoreBadge(score) {
   return badge;
 }
 
+function predictionTrendAccentClass(trend) {
+  if (trend === "up" || trend === "forecast_up") return "pred-card--up";
+  if (trend === "down" || trend === "forecast_down") return "pred-card--down";
+  return "pred-card--stable";
+}
+
+function buildPredictionSpotlight(rows) {
+  const panel = document.createElement("section");
+  panel.className = "pred-spotlight";
+
+  const upRows = rows
+    .filter((r) => r.base.trend === "up" || r.base.trend === "forecast_up")
+    .slice(0, 3);
+  const downRows = rows
+    .filter((r) => r.base.trend === "down" || r.base.trend === "forecast_down")
+    .slice(0, 3);
+
+  if (!upRows.length && !downRows.length) return panel;
+
+  const title = document.createElement("h3");
+  title.className = "pred-spotlight-title";
+  title.textContent = t(lang, "predictions.spotlight_title");
+  panel.appendChild(title);
+
+  const grid = document.createElement("div");
+  grid.className = "pred-spotlight-grid";
+
+  function miniColumn(kind, labelKey, items) {
+    if (!items.length) return;
+    const col = document.createElement("div");
+    col.className = `pred-spotlight-col pred-spotlight-col--${kind}`;
+    const lbl = document.createElement("span");
+    lbl.className = "pred-spotlight-col-label";
+    lbl.textContent = t(lang, labelKey);
+    col.appendChild(lbl);
+    const list = document.createElement("ul");
+    list.className = "pred-spotlight-list";
+    for (const row of items) {
+      const li = document.createElement("li");
+      li.className = `pred-spotlight-item ${cardRarityClass(row.unit.rareza)}`.trim();
+      if (row.unit.imagen) {
+        const img = document.createElement("img");
+        img.src = assetUrl(row.unit.imagen);
+        img.alt = "";
+        li.appendChild(img);
+      }
+      const meta = document.createElement("div");
+      meta.className = "pred-spotlight-item-meta";
+      const name = document.createElement("strong");
+      name.textContent = unitDisplayName(row.unit);
+      const delta = document.createElement("span");
+      delta.className = "pred-spotlight-item-delta";
+      const sign = row.base.delta > 0 ? "+" : "";
+      delta.textContent = `${sign}${row.base.delta || "—"}`;
+      meta.appendChild(name);
+      meta.appendChild(delta);
+      li.appendChild(meta);
+      list.appendChild(li);
+    }
+    col.appendChild(list);
+    grid.appendChild(col);
+  }
+
+  miniColumn("up", "predictions.spotlight_risers", upRows);
+  miniColumn("down", "predictions.spotlight_fallers", downRows);
+  panel.appendChild(grid);
+  return panel;
+}
+
 function buildPredictionCard(row) {
   const card = document.createElement("article");
-  card.className = `pred-card ${cardRarityClass(row.unit.rareza)}`;
+  card.className = [
+    "pred-card",
+    cardRarityClass(row.unit.rareza),
+    predictionTrendAccentClass(row.base.trend),
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const head = document.createElement("div");
   head.className = "pred-card-head";
+
+  const identity = document.createElement("div");
+  identity.className = "pred-card-identity";
   if (row.unit.imagen) {
+    const face = document.createElement("div");
+    face.className = "pred-card-face";
     const img = document.createElement("img");
     img.className = "pred-card-thumb";
     img.src = assetUrl(row.unit.imagen);
     img.alt = "";
-    head.appendChild(img);
+    face.appendChild(img);
+    identity.appendChild(face);
   }
+
   const info = document.createElement("div");
   info.className = "pred-card-info";
   const nameRow = document.createElement("div");
@@ -3190,11 +3377,17 @@ function buildPredictionCard(row) {
   nameRow.appendChild(name);
   nameRow.appendChild(buildRarityBadge(row.unit.rareza));
   info.appendChild(nameRow);
+
+  const metaRow = document.createElement("div");
+  metaRow.className = "pred-card-meta-row";
   const val = document.createElement("span");
   val.className = "pred-card-val";
   val.innerHTML = `${escapeHtml(t(lang, "predictions.base_value"))}: <strong>${row.base.current}</strong>`;
-  info.appendChild(val);
-  head.appendChild(info);
+  metaRow.appendChild(val);
+  metaRow.appendChild(buildDemandScoreBadge(row.unit));
+  info.appendChild(metaRow);
+  identity.appendChild(info);
+  head.appendChild(identity);
 
   const sparkWrap = document.createElement("div");
   sparkWrap.className = "pred-card-spark-wrap";
@@ -3205,6 +3398,24 @@ function buildPredictionCard(row) {
   const trends = document.createElement("div");
   trends.className = "pred-card-trends";
   trends.appendChild(buildPredictionTrendPill(row.base.trend, row.base.delta));
+  if (row.votes?.voto2) {
+    trends.appendChild(
+      buildPredictionTrendPill(
+        row.votes.voto2.trend,
+        row.votes.voto2.delta,
+        `${t(lang, "predictions.vote_label")}: `,
+      ),
+    );
+  }
+  if (row.votes?.voto13) {
+    trends.appendChild(
+      buildPredictionTrendPill(
+        row.votes.voto13.trend,
+        row.votes.voto13.delta,
+        `${t(lang, "predictions.vote13_label")}: `,
+      ),
+    );
+  }
 
   const tip = document.createElement("p");
   tip.className = "pred-card-tip muted";
@@ -3276,6 +3487,9 @@ function buildPredictionsView() {
   analytics.appendChild(summaryBox);
   analytics.appendChild(charts);
   wrap.appendChild(analytics);
+
+  const spotlight = buildPredictionSpotlight(rows);
+  if (spotlight.childElementCount > 0) wrap.appendChild(spotlight);
 
   const meta = document.createElement("p");
   meta.className = "pred-meta muted";
@@ -3383,7 +3597,7 @@ function buildPredictionsView() {
     }
   } else {
     const list = document.createElement("div");
-    list.className = "pred-list";
+    list.className = "pred-list pred-list--grid";
     for (const row of filtered) list.appendChild(buildPredictionCard(row));
     listRoot.appendChild(list);
   }
