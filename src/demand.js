@@ -85,3 +85,22 @@ export function computeDemandValuation(demanda, baseValor) {
 export function stabilityLabel(lang, stability, t) {
   return t(lang, `demand.stability_${stability}`);
 }
+
+/** @returns {"high"|"mid"|"low"|"unknown"} */
+export function demandScoreTier(demanda) {
+  const d = parseDemanda(demanda);
+  if (d === null) return "unknown";
+  if (d >= 7) return "high";
+  if (d >= 4) return "mid";
+  return "low";
+}
+
+/**
+ * Valor de mercado estimado según la nota de demanda (premium invisible).
+ * @param {number | null | undefined} demanda
+ * @param {number} listedVal
+ */
+export function effectiveTradeValue(demanda, listedVal) {
+  const { estimatedValue } = computeDemandValuation(demanda, listedVal);
+  return estimatedValue ?? listedVal;
+}
