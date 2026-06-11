@@ -146,6 +146,8 @@ let tradeSuggestionsOpen = readTradeSuggestionsOpen();
 let tradeOwnedInventory = loadOwnedInventory();
 /** @type {HTMLDialogElement | null} */
 let tradeInventoryDialogEl = null;
+/** @type {string} */
+let tradeInventorySelectedUnit = "";
 let tradeRarityFilter =
   typeof localStorage !== "undefined"
     ? readRarityFilter("tdhub_trade_rarity")
@@ -501,14 +503,28 @@ function adjustOwnedDraftEntry(draft, nombre, voteKey, deltaQty) {
   }
 }
 
-function changeOwnedDraftVote(draft, entryId, nextVoteKey) {
-  const idx = draft.findIndex((e) => e.id === entryId);
-  if (idx < 0) return;
-  const entry = draft[idx];
-  if (entry.voteKey === nextVoteKey) return;
-  const qty = entry.qty;
-  draft.splice(idx, 1);
-  adjustOwnedDraftEntry(draft, entry.nombre, nextVoteKey, qty);
+function getOwnedQtyForVote(draft, nombre, voteKey) {
+  const entry = draft.find(
+    (e) => e.nombre === nombre && e.voteKey === voteKey,
+  );
+  return entry ? entry.qty : 0;
+}
+
+function ownedQtyForUnit(draft, nombre) {
+  return draft
+    .filter((e) => e.nombre === nombre)
+    .reduce((sum, e) => sum + e.qty, 0);
+}
+
+function syncDraftToStorage(draft) {
+  tradeOwnedInventory = draft
+    .map((e) => normalizeOwnedEntry(e))
+    .filter(Boolean);
+  saveOwnedInventory();
+}
+
+function isInventoryRestricted() {
+  return tradeOwnedInventory.length > 0;
 }
 
 /** Votos compatibles con una unidad: cambian el valor o son HR/THO. */
@@ -667,7 +683,7 @@ function findTradeSuggestions(gap, { onlyOwned = false, avgRecvDemand = null } =
   const maxAdd = gap - 1;
   let minAdd = Math.max(1, Math.floor(gap * 0.52));
   const rawPool = buildTradeSuggestPool({ onlyOwned }).filter(
-    (item) => item.val <= maxAdd,
+    (item) => item.val > 0 && item.val <= maxAdd,
   );
   if (!rawPool.length) return [];
 
@@ -676,17 +692,19 @@ function findTradeSuggestions(gap, { onlyOwned = false, avgRecvDemand = null } =
     : [...rawPool]
         .sort(
           (a, b) =>
-            givePriorityScore(b.u) - b.val * 0.015 -
+            givePriorityScore(b.u) -
+            b.val * 0.015 -
             (givePriorityScore(a.u) - a.val * 0.015),
         )
-        .slice(0, 55);
+        .slice(0, 32);
 
   /** @type {TradeSuggestCombo[]} */
   const results = [];
   const seen = new Set();
 
   function recordCombo(/** @type {TradeSuggestPick[]} */ picks, totalVal) {
-    if (totalVal <= 0 || totalVal > maxAdd) return;
+    if (!picks.length || totalVal <= 0 || totalVal > maxAdd) return;
+    if (totalVal < minAdd && totalVal < Math.max(1, maxAdd * 0.35)) return;
     const scored = scoreTradeCombo(gap, totalVal, picks, avgRecvDemand);
     if (!scored) return;
     const key = picks
@@ -702,34 +720,115 @@ function findTradeSuggestions(gap, { onlyOwned = false, avgRecvDemand = null } =
     });
   }
 
-  function dfs(
-    idx,
-    /** @type {TradeSuggestPick[]} */ picks,
-    totalVal,
-    totalQty,
-  ) {
-    if (totalVal > 0 && (totalVal >= minAdd || idx >= pool.length)) {
-      recordCombo(picks, totalVal);
-    }
-    if (idx >= pool.length || totalQty >= 8) return;
+  function mergePick(/** @type {TradeSuggestPick[]} */ picks, item, qty) {
+    if (qty <= 0) return;
+    const existing = picks.find(
+      (p) => p.u.nombre === item.u.nombre && p.voteKey === item.voteKey,
+    );
+    if (existing) existing.qty += qty;
+    else picks.push({ u: item.u, voteKey: item.voteKey, qty, val: item.val });
+  }
 
-    dfs(idx + 1, picks, totalVal, totalQty);
+  function picksFromMap(/** @type {Map<string, TradeSuggestPick>} */ map) {
+    return [...map.values()];
+  }
 
-    const item = pool[idx];
+  for (const item of pool) {
     for (let q = 1; q <= item.maxQty; q++) {
-      const addVal = item.val * q;
-      if (totalVal + addVal > maxAdd || totalQty + q > 8) break;
-      picks.push({ u: item.u, voteKey: item.voteKey, qty: q, val: item.val });
-      dfs(idx + 1, picks, totalVal + addVal, totalQty + q);
-      picks.pop();
+      const totalVal = item.val * q;
+      if (totalVal > maxAdd) break;
+      recordCombo(
+        [{ u: item.u, voteKey: item.voteKey, qty: q, val: item.val }],
+        totalVal,
+      );
     }
   }
 
-  dfs(0, [], 0, 0);
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i; j < pool.length; j++) {
+      const a = pool[i];
+      const b = pool[j];
+      const maxA = a.maxQty;
+      const maxB = j === i ? 0 : b.maxQty;
+      for (let qa = 1; qa <= maxA; qa++) {
+        for (let qb = 1; qb <= (j === i ? maxA - qa : maxB); qb++) {
+          const totalVal = a.val * qa + b.val * qb;
+          if (totalVal > maxAdd || qa + qb > 8) continue;
+          /** @type {TradeSuggestPick[]} */
+          const picks = [];
+          mergePick(picks, a, qa);
+          mergePick(picks, b, qb);
+          recordCombo(picks, totalVal);
+        }
+      }
+    }
+  }
+
+  const pool3 = pool.slice(0, 20);
+  for (let i = 0; i < pool3.length; i++) {
+    for (let j = i; j < pool3.length; j++) {
+      for (let k = j; k < pool3.length; k++) {
+        /** @type {Map<string, TradeSuggestPick>} */
+        const map = new Map();
+        for (const idx of [i, j, k]) {
+          const item = pool3[idx];
+          const key = `${item.u.nombre}|${item.voteKey}`;
+          const cur = map.get(key);
+          if (cur) cur.qty += 1;
+          else
+            map.set(key, {
+              u: item.u,
+              voteKey: item.voteKey,
+              qty: 1,
+              val: item.val,
+            });
+        }
+        const picks = picksFromMap(map);
+        const totalVal = picks.reduce((sum, p) => sum + p.val * p.qty, 0);
+        const totalQty = picks.reduce((sum, p) => sum + p.qty, 0);
+        if (totalQty > 8 || totalVal > maxAdd) continue;
+        for (const p of picks) {
+          const poolItem = pool3.find(
+            (x) => x.u.nombre === p.u.nombre && x.voteKey === p.voteKey,
+          );
+          if (!poolItem || p.qty > poolItem.maxQty) {
+            map.clear();
+            break;
+          }
+        }
+        if (map.size) recordCombo(picksFromMap(map), totalVal);
+      }
+    }
+  }
+
+  const cheapFirst = [...pool].sort((a, b) => a.val - b.val);
+  for (const seed of cheapFirst.slice(0, 14)) {
+    let totalVal = 0;
+    let totalQty = 0;
+    /** @type {TradeSuggestPick[]} */
+    const picks = [];
+    for (const item of [seed, ...cheapFirst]) {
+      while (totalQty < 8 && totalVal + item.val <= maxAdd) {
+        const cur = picks.find(
+          (p) => p.u.nombre === item.u.nombre && p.voteKey === item.voteKey,
+        );
+        if (cur && cur.qty >= item.maxQty) break;
+        mergePick(picks, item, 1);
+        totalVal += item.val;
+        totalQty += 1;
+      }
+    }
+    if (picks.length) recordCombo(picks, totalVal);
+  }
 
   if (!results.length && minAdd > 1) {
     minAdd = 1;
-    dfs(0, [], 0, 0);
+    for (const item of pool) {
+      recordCombo(
+        [{ u: item.u, voteKey: item.voteKey, qty: 1, val: item.val }],
+        item.val,
+      );
+    }
   }
 
   return results
@@ -745,10 +844,10 @@ function findTradeSuggestions(gap, { onlyOwned = false, avgRecvDemand = null } =
 function ensureTradeInventoryDialog() {
   if (tradeInventoryDialogEl) return;
   const d = document.createElement("dialog");
-  d.className = "trade-inventory-dialog";
+  d.className = "trade-inventory-dialog trade-inv-dialog";
   d.innerHTML = `
-    <div class="trade-inventory-dialog-inner" data-inventory-body></div>
-    <div class="trade-inventory-dialog-foot">
+    <div class="trade-inventory-dialog-inner trade-inv-dialog-inner" data-inventory-body></div>
+    <div class="trade-inventory-dialog-foot trade-inv-dialog-foot">
       <button type="button" class="trade-inventory-clear" data-inventory-clear></button>
       <button type="button" class="trade-inventory-save" data-inventory-save></button>
     </div>`;
@@ -759,32 +858,181 @@ function ensureTradeInventoryDialog() {
   });
 }
 
-function renderTradeInventoryDialogBody(draft, searchQ = "") {
+function buildInventoryUnitTile(u, draft, selectedNombre) {
+  const ownedQty = ownedQtyForUnit(draft, u.nombre);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = [
+    "trade-inv-tile",
+    cardRarityClass(u.rareza),
+    selectedNombre === u.nombre ? "trade-inv-tile--active" : "",
+    ownedQty > 0 ? "trade-inv-tile--owned" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const img = document.createElement("img");
+  img.src = u.imagen ? assetUrl(u.imagen) : "";
+  img.alt = unitDisplayName(u);
+  img.loading = "lazy";
+
+  const meta = document.createElement("div");
+  meta.className = "trade-inv-tile-meta";
+  const name = document.createElement("span");
+  name.className = "trade-inv-tile-name";
+  name.textContent = unitDisplayName(u);
+  const val = document.createElement("span");
+  val.className = "trade-inv-tile-val";
+  val.textContent = String(u.valor);
+  meta.appendChild(name);
+  meta.appendChild(val);
+
+  btn.appendChild(img);
+  btn.appendChild(meta);
+
+  if (ownedQty > 0) {
+    const badge = document.createElement("span");
+    badge.className = "trade-inv-tile-badge";
+    badge.textContent = `×${ownedQty}`;
+    btn.appendChild(badge);
+  }
+
+  return btn;
+}
+
+function buildInventoryDetailPanel(u, draft, refresh) {
+  const panel = document.createElement("div");
+  panel.className = `trade-inv-detail ${cardRarityClass(u.rareza)}`.trim();
+
+  const hero = document.createElement("div");
+  hero.className = "trade-inv-detail-hero";
+  const face = document.createElement("div");
+  face.className = "trade-inv-detail-face";
+  const img = document.createElement("img");
+  img.src = u.imagen ? assetUrl(u.imagen) : "";
+  img.alt = unitDisplayName(u);
+  face.appendChild(img);
+
+  const heroMeta = document.createElement("div");
+  heroMeta.className = "trade-inv-detail-hero-meta";
+  const title = document.createElement("h4");
+  title.textContent = unitDisplayName(u);
+  const sub = document.createElement("p");
+  sub.className = "muted";
+  sub.textContent = t(lang, "trade.inventory_detail_sub", {
+    qty: ownedQtyForUnit(draft, u.nombre),
+  });
+  heroMeta.appendChild(title);
+  if (u.rareza) heroMeta.appendChild(buildRarityBadge(u.rareza));
+  heroMeta.appendChild(sub);
+  heroMeta.appendChild(buildUnitDemandRow(u, { compact: true }));
+
+  hero.appendChild(face);
+  hero.appendChild(heroMeta);
+  panel.appendChild(hero);
+
+  const voteHead = document.createElement("div");
+  voteHead.className = "trade-inv-vote-head";
+  voteHead.textContent = t(lang, "trade.inventory_votes_title");
+  panel.appendChild(voteHead);
+
+  const lines = document.createElement("div");
+  lines.className = "vote-lines trade-inv-vote-lines";
+
+  for (const { value, voteNums } of uniqueVoteEntriesForUnit(u)) {
+    const vk = voteKey(voteNums[0]);
+    const row = document.createElement("div");
+    row.className = "vote-line trade-inv-vote-line";
+
+    const voteImg = document.createElement("img");
+    voteImg.alt = voteDisplayLabel(lang, voteNums[0]);
+    voteImg.src = assetUrl(`assets/votos/voto${voteNums[0]}.png`);
+    voteImg.onerror = () => {
+      voteImg.replaceWith(document.createTextNode(`V${voteNums[0]}`));
+    };
+
+    const info = document.createElement("span");
+    info.className = "val-info";
+    const voteNames = voteNums.map((vn) => voteDisplayLabel(lang, vn)).join(" · ");
+    info.textContent = `${voteNames} · ${t(lang, "trade.value")}: ${value}`;
+
+    const btnMinus = document.createElement("button");
+    btnMinus.className = "minus";
+    btnMinus.type = "button";
+    btnMinus.textContent = "−";
+    btnMinus.disabled = getOwnedQtyForVote(draft, u.nombre, vk) <= 0;
+
+    const cnt = document.createElement("span");
+    cnt.className = "cnt";
+    cnt.textContent = String(getOwnedQtyForVote(draft, u.nombre, vk));
+
+    const btnPlus = document.createElement("button");
+    btnPlus.className = "plus";
+    btnPlus.type = "button";
+    btnPlus.textContent = "+";
+    btnPlus.disabled = getOwnedQtyForVote(draft, u.nombre, vk) >= 99;
+
+    btnMinus.onclick = () => {
+      adjustOwnedDraftEntry(draft, u.nombre, vk, -1);
+      syncDraftToStorage(draft);
+      refresh();
+    };
+    btnPlus.onclick = () => {
+      adjustOwnedDraftEntry(draft, u.nombre, vk, 1);
+      syncDraftToStorage(draft);
+      refresh();
+    };
+
+    row.appendChild(voteImg);
+    row.appendChild(info);
+    row.appendChild(btnMinus);
+    row.appendChild(cnt);
+    row.appendChild(btnPlus);
+    lines.appendChild(row);
+  }
+
+  panel.appendChild(lines);
+  return panel;
+}
+
+function renderTradeInventoryDialogBody(
+  draft,
+  searchQ = "",
+  selectedNombre = tradeInventorySelectedUnit,
+) {
   const body = tradeInventoryDialogEl.querySelector("[data-inventory-body]");
   body.innerHTML = "";
 
+  const restricted = draft.length > 0;
   const summary = {
     entries: draft.length,
     qty: draft.reduce((sum, e) => sum + e.qty, 0),
   };
 
   const head = document.createElement("div");
-  head.className = "trade-inventory-dialog-head";
+  head.className = "trade-inv-dialog-head";
+  const headTop = document.createElement("div");
+  headTop.className = "trade-inv-dialog-head-top";
   const h = document.createElement("h3");
   h.textContent = t(lang, "trade.inventory_title");
-  const hint = document.createElement("p");
-  hint.className = "muted";
-  hint.textContent = t(lang, "trade.inventory_hint");
-  const count = document.createElement("p");
-  count.className = "trade-inventory-count";
-  count.textContent = t(lang, "trade.inventory_count", summary);
-  head.appendChild(h);
-  head.appendChild(hint);
-  head.appendChild(count);
+  const closeHint = document.createElement("p");
+  closeHint.className = "muted trade-inv-dialog-sub";
+  closeHint.textContent = t(lang, "trade.inventory_hint");
+  headTop.appendChild(h);
+  headTop.appendChild(closeHint);
+
+  const mode = document.createElement("div");
+  mode.className = `trade-inv-mode ${restricted ? "trade-inv-mode--restricted" : "trade-inv-mode--open"}`.trim();
+  mode.innerHTML = restricted
+    ? `<strong>${escapeHtml(t(lang, "trade.inventory_mode_restricted"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_count", summary))}</span>`
+    : `<strong>${escapeHtml(t(lang, "trade.inventory_mode_open"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_mode_open_hint"))}</span>`;
+
+  head.appendChild(headTop);
+  head.appendChild(mode);
   body.appendChild(head);
 
   const searchWrap = document.createElement("div");
-  searchWrap.className = "trade-inventory-search";
+  searchWrap.className = "trade-inventory-search trade-inv-search";
   const inp = document.createElement("input");
   inp.type = "text";
   inp.placeholder = t(lang, "trade.inventory_search");
@@ -794,171 +1042,64 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
   searchWrap.appendChild(inp);
   body.appendChild(searchWrap);
 
-  if (draft.length > 0) {
-    const stockHead = document.createElement("div");
-    stockHead.className = "trade-inventory-stock-head";
-    stockHead.textContent = t(lang, "trade.inventory_stock_title");
-    body.appendChild(stockHead);
+  const layout = document.createElement("div");
+  layout.className = "trade-inv-layout";
 
-    const stockList = document.createElement("div");
-    stockList.className = "trade-inventory-stock-list";
-    for (const entry of draft) {
-      const u = findUnitByName(entry.nombre);
-      if (!u) continue;
-
-      const row = document.createElement("div");
-      row.className = `trade-inventory-stock-row ${cardRarityClass(u.rareza)}`.trim();
-
-      const thumb = document.createElement("div");
-      thumb.className = "trade-inventory-stock-thumb";
-      const img = document.createElement("img");
-      img.src = u.imagen ? assetUrl(u.imagen) : "";
-      img.alt = "";
-      thumb.appendChild(img);
-
-      const meta = document.createElement("div");
-      meta.className = "trade-inventory-stock-meta";
-      const name = document.createElement("div");
-      name.className = "trade-inventory-stock-name";
-      name.textContent = unitDisplayName(u);
-      const valLine = document.createElement("div");
-      valLine.className = "trade-inventory-stock-val muted";
-      valLine.textContent = t(lang, "trade.inventory_entry_val", {
-        val: voteValueForUnit(u, entry.voteKey),
-      });
-      meta.appendChild(name);
-      meta.appendChild(valLine);
-
-      const voteWrap = document.createElement("label");
-      voteWrap.className = "trade-inventory-stock-vote";
-      const voteLbl = document.createElement("span");
-      voteLbl.textContent = t(lang, "trade.inventory_vote");
-      const voteSel = document.createElement("select");
-      for (const { value, voteNums } of uniqueVoteEntriesForUnit(u)) {
-        const vk = voteKey(voteNums[0]);
-        const opt = document.createElement("option");
-        opt.value = vk;
-        opt.textContent = voteNums
-          .map((vn) => voteDisplayLabel(lang, vn))
-          .join(" / ");
-        opt.title = `${value} pts`;
-        if (vk === entry.voteKey) opt.selected = true;
-        voteSel.appendChild(opt);
-      }
-      voteSel.onchange = () => {
-        changeOwnedDraftVote(draft, entry.id, voteSel.value);
-        tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
-        saveOwnedInventory();
-        renderTradeInventoryDialogBody(draft, inp.value);
-      };
-      voteWrap.appendChild(voteLbl);
-      voteWrap.appendChild(voteSel);
-
-      const qtyWrap = document.createElement("div");
-      qtyWrap.className = "trade-inventory-stock-qty";
-      const qtyLbl = document.createElement("span");
-      qtyLbl.textContent = t(lang, "trade.inventory_qty");
-      const minus = document.createElement("button");
-      minus.type = "button";
-      minus.className = "round minus";
-      minus.textContent = "−";
-      minus.onclick = () => {
-        adjustOwnedDraftEntry(draft, entry.nombre, entry.voteKey, -1);
-        tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
-        saveOwnedInventory();
-        renderTradeInventoryDialogBody(draft, inp.value);
-      };
-      const qtyVal = document.createElement("span");
-      qtyVal.className = "trade-inventory-stock-qty-val";
-      qtyVal.textContent = String(entry.qty);
-      const plus = document.createElement("button");
-      plus.type = "button";
-      plus.className = "round plus";
-      plus.textContent = "+";
-      plus.onclick = () => {
-        adjustOwnedDraftEntry(draft, entry.nombre, entry.voteKey, 1);
-        tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
-        saveOwnedInventory();
-        renderTradeInventoryDialogBody(draft, inp.value);
-      };
-      qtyWrap.appendChild(qtyLbl);
-      qtyWrap.appendChild(minus);
-      qtyWrap.appendChild(qtyVal);
-      qtyWrap.appendChild(plus);
-
-      const addVoteBtn = document.createElement("button");
-      addVoteBtn.type = "button";
-      addVoteBtn.className = "trade-inventory-add-vote";
-      addVoteBtn.textContent = t(lang, "trade.inventory_add_vote");
-      addVoteBtn.title = t(lang, "trade.inventory_add_vote_hint");
-      addVoteBtn.onclick = () => {
-        const votes = uniqueVoteEntriesForUnit(u);
-        const used = new Set(
-          draft.filter((e) => e.nombre === entry.nombre).map((e) => e.voteKey),
-        );
-        const next = votes.find(({ voteNums }) => !used.has(voteKey(voteNums[0])));
-        if (!next) return;
-        adjustOwnedDraftEntry(draft, entry.nombre, voteKey(next.voteNums[0]), 1);
-        tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
-        saveOwnedInventory();
-        renderTradeInventoryDialogBody(draft, inp.value);
-      };
-      if (
-        uniqueVoteEntriesForUnit(u).length <=
-        draft.filter((e) => e.nombre === entry.nombre).length
-      ) {
-        addVoteBtn.disabled = true;
-      }
-
-      row.appendChild(thumb);
-      row.appendChild(meta);
-      row.appendChild(voteWrap);
-      row.appendChild(qtyWrap);
-      row.appendChild(addVoteBtn);
-      stockList.appendChild(row);
-    }
-    body.appendChild(stockList);
-  }
-
-  const gridHead = document.createElement("div");
-  gridHead.className = "trade-inventory-grid-head muted";
-  gridHead.textContent = t(lang, "trade.inventory_grid_hint");
-  body.appendChild(gridHead);
+  const gridCol = document.createElement("div");
+  gridCol.className = "trade-inv-grid-col";
+  const gridLabel = document.createElement("div");
+  gridLabel.className = "trade-inv-col-label";
+  gridLabel.textContent = t(lang, "trade.inventory_units_label");
+  gridCol.appendChild(gridLabel);
 
   const grid = document.createElement("div");
-  grid.className = "trade-inventory-pick-grid";
+  grid.className = "trade-inv-grid";
   const list = getFilteredUnits(searchQ, "all");
+  let firstVisible = "";
+
   for (const u of list) {
-    const inDraft = draft.some((e) => e.nombre === u.nombre);
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = `trade-inventory-pick ${cardRarityClass(u.rareza)}${inDraft ? " trade-inventory-pick--on" : ""}`.trim();
-    const img = document.createElement("img");
-    img.src = u.imagen ? assetUrl(u.imagen) : "";
-    img.alt = "";
-    const lbl = document.createElement("span");
-    lbl.textContent = unitDisplayName(u);
-    const qtyBadge = document.createElement("span");
-    qtyBadge.className = "trade-inventory-pick-qty";
-    const ownedQty = draft
-      .filter((e) => e.nombre === u.nombre)
-      .reduce((sum, e) => sum + e.qty, 0);
-    qtyBadge.textContent = ownedQty > 0 ? `×${ownedQty}` : "";
-    btn.appendChild(img);
-    btn.appendChild(lbl);
-    if (ownedQty > 0) btn.appendChild(qtyBadge);
-    btn.onclick = () => {
-      adjustOwnedDraftEntry(draft, u.nombre, "voto1", 1);
-      tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
-      saveOwnedInventory();
-      renderTradeInventoryDialogBody(draft, inp.value);
+    if (!firstVisible) firstVisible = u.nombre;
+    const tile = buildInventoryUnitTile(u, draft, selectedNombre);
+    tile.onclick = () => {
+      tradeInventorySelectedUnit = u.nombre;
+      renderTradeInventoryDialogBody(draft, inp.value, u.nombre);
     };
-    grid.appendChild(btn);
+    grid.appendChild(tile);
   }
-  body.appendChild(grid);
+
+  if (!selectedNombre || !list.some((u) => u.nombre === selectedNombre)) {
+    selectedNombre = firstVisible;
+    tradeInventorySelectedUnit = firstVisible;
+  }
+
+  gridCol.appendChild(grid);
+  layout.appendChild(gridCol);
+
+  const detailCol = document.createElement("div");
+  detailCol.className = "trade-inv-detail-col";
+  const detailLabel = document.createElement("div");
+  detailLabel.className = "trade-inv-col-label";
+  detailLabel.textContent = t(lang, "trade.inventory_detail_label");
+  detailCol.appendChild(detailLabel);
+
+  const refresh = () =>
+    renderTradeInventoryDialogBody(draft, inp.value, tradeInventorySelectedUnit);
+
+  const selectedUnit = selectedNombre ? findUnitByName(selectedNombre) : null;
+  if (selectedUnit) {
+    detailCol.appendChild(buildInventoryDetailPanel(selectedUnit, draft, refresh));
+  } else {
+    const empty = document.createElement("div");
+    empty.className = "trade-inv-detail-empty";
+    empty.textContent = t(lang, "trade.inventory_detail_empty");
+    detailCol.appendChild(empty);
+  }
+
+  layout.appendChild(detailCol);
+  body.appendChild(layout);
 
   inp.addEventListener("input", () => {
-    renderTradeInventoryDialogBody(draft, inp.value);
+    renderTradeInventoryDialogBody(draft, inp.value, tradeInventorySelectedUnit);
   });
 
   const clearBtn = tradeInventoryDialogEl.querySelector("[data-inventory-clear]");
@@ -967,12 +1108,12 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
   saveBtn.textContent = t(lang, "trade.inventory_save");
   clearBtn.onclick = () => {
     draft.length = 0;
+    tradeInventorySelectedUnit = "";
     resetTradeOwnedInventory();
-    renderTradeInventoryDialogBody(draft, inp.value);
+    renderTradeInventoryDialogBody(draft, inp.value, "");
   };
   saveBtn.onclick = () => {
-    tradeOwnedInventory = draft.map((e) => normalizeOwnedEntry(e)).filter(Boolean);
-    saveOwnedInventory();
+    syncDraftToStorage(draft);
     tradeInventoryDialogEl.close();
     renderApp();
   };
@@ -981,7 +1122,10 @@ function renderTradeInventoryDialogBody(draft, searchQ = "") {
 function openTradeInventoryDialog() {
   ensureTradeInventoryDialog();
   const draft = tradeOwnedInventory.map((e) => ({ ...e }));
-  renderTradeInventoryDialogBody(draft, "");
+  if (!tradeInventorySelectedUnit && draft.length > 0) {
+    tradeInventorySelectedUnit = draft[0].nombre;
+  }
+  renderTradeInventoryDialogBody(draft, "", tradeInventorySelectedUnit);
   tradeInventoryDialogEl.showModal();
 }
 
@@ -1050,7 +1194,7 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
   resetInvBtn.type = "button";
   resetInvBtn.className = "trade-inventory-reset-btn";
   resetInvBtn.textContent = t(lang, "trade.inventory_reset");
-  resetInvBtn.disabled = invSummary.entries === 0;
+  resetInvBtn.disabled = !isInventoryRestricted();
   resetInvBtn.title = t(lang, "trade.inventory_reset_hint");
   resetInvBtn.onclick = () => {
     resetTradeOwnedInventory();
@@ -1064,11 +1208,16 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
   head.appendChild(invActions);
   panel.appendChild(head);
 
-  if (invSummary.entries > 0) {
+  if (isInventoryRestricted()) {
     const savedNote = document.createElement("p");
     savedNote.className = "trade-inventory-saved muted";
     savedNote.textContent = t(lang, "trade.inventory_saved", invSummary);
     panel.appendChild(savedNote);
+  } else {
+    const openNote = document.createElement("p");
+    openNote.className = "trade-inventory-open-note muted";
+    openNote.textContent = t(lang, "trade.inventory_mode_open_short");
+    panel.appendChild(openNote);
   }
 
   const rightHasUnits = Object.keys(tradeRightCounts).some((nombre) => {
@@ -1115,11 +1264,16 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
 
   const list = document.createElement("div");
   list.className = "trade-suggestions-list";
-  const useOwned = invSummary.entries > 0;
-  let suggestions = findTradeSuggestions(gap, {
-    onlyOwned: useOwned,
-    avgRecvDemand: avgDem,
-  });
+  const useOwned = isInventoryRestricted();
+  let suggestions = [];
+  try {
+    suggestions = findTradeSuggestions(gap, {
+      onlyOwned: useOwned,
+      avgRecvDemand: avgDem,
+    });
+  } catch (err) {
+    console.error("Trade suggestions failed:", err);
+  }
 
   if (useOwned) {
     const ownedNote = document.createElement("p");
@@ -1128,15 +1282,18 @@ function buildTradeSuggestionsPanel(leftT, rightT) {
     panel.appendChild(ownedNote);
   }
 
-  if (!suggestions.length && useOwned) {
+  if (!suggestions.length) {
     const empty = document.createElement("p");
     empty.className = "trade-suggestions-empty muted";
-    empty.textContent = t(lang, "trade.suggest_no_owned");
+    empty.textContent = useOwned
+      ? t(lang, "trade.suggest_no_owned")
+      : t(lang, "trade.suggest_no_combo");
     panel.appendChild(empty);
     return panel;
   }
 
   suggestions.forEach((sug, idx) => {
+    if (!sug.picks?.length) return;
     const item = document.createElement("article");
     item.className = `trade-suggest-card ${cardRarityClass(sug.picks[0].u.rareza)}`.trim();
 
