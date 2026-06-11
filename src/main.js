@@ -26,7 +26,11 @@ import {
   sortPredictionRows,
   buildRarityBreakdown,
 } from "./predictions.js";
-import { stabilityLabel } from "./demand.js";
+import {
+  stabilityLabel,
+  demandScoreTier,
+  effectiveTradeValue,
+} from "./demand.js";
 
 /** Lista de valores oficial (Sorcerer TD Value list). */
 const OFFICIAL_VALUE_LIST_URL =
@@ -354,7 +358,8 @@ function unitDisplayName(u) {
 
 function buildDemandScoreBadge(u) {
   const badge = document.createElement("span");
-  badge.className = "demand-score";
+  const tier = demandScoreTier(u.demanda);
+  badge.className = `demand-score demand-score--${tier}`;
   if (u.demanda === null || u.demanda === undefined) {
     badge.textContent = "—";
     badge.title = t(lang, "demand.hint_unknown");
@@ -557,6 +562,24 @@ function uniqueVoteEntriesForUnit(u) {
   return out;
 }
 
+/** Entradas de inventario: siempre incluye sin voto + variantes con voto. */
+function inventoryVoteEntriesForUnit(u) {
+  const baseVal = Number(u.valor) || 0;
+  /** @type {Array<{ value: number, voteNums: number[] }>} */
+  const entries = [{ value: baseVal, voteNums: [1] }];
+  for (const entry of uniqueVoteEntriesForUnit(u)) {
+    if (
+      entry.voteNums.length === 1 &&
+      entry.voteNums[0] === 1 &&
+      entry.value === baseVal
+    ) {
+      continue;
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
 function calcGrandTotal() {
   let total = 0;
   for (const u of units) {
@@ -601,12 +624,17 @@ function avgDemandOfSide(countsMap) {
   return n > 0 ? sum / n : null;
 }
 
-function givePriorityScore(u) {
+function givePriorityScore(u, listedVal = Number(u.valor) || 0) {
   const demand = u.demanda ?? 5;
   let score = (10 - demand) * 3.2;
   if (u.estabilidad === "dropping") score += 14;
   else if (u.estabilidad === "stable") score += 5;
+  score -= hiddenValuePremium(u, listedVal) * 0.35;
   return score;
+}
+
+function hiddenValuePremium(u, listedVal) {
+  return effectiveTradeValue(u.demanda, listedVal) - listedVal;
 }
 
 /** @param {Array<{u: Unit, voteKey: string, qty: number, val: number}>} picks */
@@ -627,7 +655,8 @@ function scoreTradeCombo(gap, totalVal, picks, avgRecvDemand) {
   for (const p of picks) {
     giveDemandSum += (p.u.demanda ?? 5) * p.qty;
     giveN += p.qty;
-    score += givePriorityScore(p.u) * p.qty * 0.85;
+    score += givePriorityScore(p.u, p.val) * p.qty * 0.85;
+    score -= hiddenValuePremium(p.u, p.val) * p.qty * 0.55;
   }
   const avgGiveDemand = giveN > 0 ? giveDemandSum / giveN : 5;
   if (avgRecvDemand !== null) {
@@ -692,9 +721,9 @@ function findTradeSuggestions(gap, { onlyOwned = false, avgRecvDemand = null } =
     : [...rawPool]
         .sort(
           (a, b) =>
-            givePriorityScore(b.u) -
+            givePriorityScore(b.u, b.val) -
             b.val * 0.015 -
-            (givePriorityScore(a.u) - a.val * 0.015),
+            (givePriorityScore(a.u, a.val) - a.val * 0.015),
         )
         .slice(0, 32);
 
@@ -939,21 +968,27 @@ function buildInventoryDetailPanel(u, draft, refresh) {
   const lines = document.createElement("div");
   lines.className = "vote-lines trade-inv-vote-lines";
 
-  for (const { value, voteNums } of uniqueVoteEntriesForUnit(u)) {
+  for (const { value, voteNums } of inventoryVoteEntriesForUnit(u)) {
     const vk = voteKey(voteNums[0]);
     const row = document.createElement("div");
     row.className = "vote-line trade-inv-vote-line";
 
     const voteImg = document.createElement("img");
     voteImg.alt = voteDisplayLabel(lang, voteNums[0]);
-    voteImg.src = assetUrl(`assets/votos/voto${voteNums[0]}.png`);
+    voteImg.src =
+      voteNums.length > 1
+        ? assetUrl("assets/incompatible.png")
+        : assetUrl(`assets/votos/voto${voteNums[0]}.png`);
     voteImg.onerror = () => {
       voteImg.replaceWith(document.createTextNode(`V${voteNums[0]}`));
     };
 
     const info = document.createElement("span");
     info.className = "val-info";
-    const voteNames = voteNums.map((vn) => voteDisplayLabel(lang, vn)).join(" · ");
+    const voteNames =
+      voteNums.length > 1
+        ? t(lang, "values.vote_incompatibles")
+        : voteNums.map((vn) => voteDisplayLabel(lang, vn)).join(" · ");
     info.textContent = `${voteNames} · ${t(lang, "trade.value")}: ${value}`;
 
     const btnMinus = document.createElement("button");
@@ -2727,7 +2762,10 @@ function buildValuesVotePillsCell(u) {
     pill.title = labels.join(" · ");
 
     const img = document.createElement("img");
-    img.src = assetUrl(`assets/votos/voto${primaryVn}.png`);
+    img.src =
+      voteNums.length > 1
+        ? assetUrl("assets/incompatible.png")
+        : assetUrl(`assets/votos/voto${primaryVn}.png`);
     img.alt = "";
     img.onerror = () => img.remove();
 
