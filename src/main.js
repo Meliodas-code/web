@@ -591,7 +591,46 @@ function inventoryDraftSummary(draft) {
   return {
     entries: draft.length,
     qty: draft.reduce((sum, e) => sum + e.qty, 0),
+    total: ownedDraftTotal(draft),
   };
+}
+
+function ownedDraftTotal(draft) {
+  let total = 0;
+  for (const e of draft) {
+    const u = findUnitByName(e.nombre);
+    if (!u) continue;
+    total += voteValueForUnit(u, e.voteKey) * e.qty;
+  }
+  return total;
+}
+
+function ownedDraftUnitTotal(draft, nombre) {
+  let total = 0;
+  for (const e of draft) {
+    if (e.nombre !== nombre) continue;
+    const u = findUnitByName(e.nombre);
+    if (!u) continue;
+    total += voteValueForUnit(u, e.voteKey) * e.qty;
+  }
+  return total;
+}
+
+function ownedDraftEntries(draft) {
+  const out = [];
+  for (const e of draft) {
+    const u = findUnitByName(e.nombre);
+    if (!u) continue;
+    out.push({ unit: u, voteKey: e.voteKey, qty: e.qty });
+  }
+  out.sort((a, b) => {
+    const unitCmp = compareUnits(a.unit, b.unit);
+    if (unitCmp !== 0) return unitCmp;
+    const ai = Number(String(a.voteKey).replace(/\D/g, "")) || 0;
+    const bi = Number(String(b.voteKey).replace(/\D/g, "")) || 0;
+    return ai - bi;
+  });
+  return out;
 }
 
 function patchInventoryDraftUI(draft, selectedNombre) {
@@ -603,10 +642,11 @@ function patchInventoryDraftUI(draft, selectedNombre) {
   const mode = body.querySelector(".trade-inv-mode");
   if (mode) {
     mode.className = `trade-inv-mode ${restricted ? "trade-inv-mode--restricted" : "trade-inv-mode--open"}`.trim();
-    mode.innerHTML = restricted
-      ? `<strong>${escapeHtml(t(lang, "trade.inventory_mode_restricted"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_count", summary))}</span>`
-      : `<strong>${escapeHtml(t(lang, "trade.inventory_mode_open"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_mode_open_hint"))}</span>`;
+    mode.innerHTML = inventoryDraftModeHtml(summary);
   }
+
+  const strip = body.querySelector("[data-owned-draft-strip]");
+  if (strip) renderOwnedDraftStrip(strip, draft, selectedNombre);
 
   for (const tile of body.querySelectorAll(".trade-inv-tile")) {
     const nombre = tile.dataset.nombre;
@@ -631,6 +671,19 @@ function patchInventoryDraftUI(draft, selectedNombre) {
     detailSub.textContent = t(lang, "trade.inventory_detail_sub", {
       qty: ownedQtyForUnit(draft, selectedNombre),
     });
+  }
+
+  const detailTotal = body.querySelector(".trade-inv-detail-unit-total");
+  if (detailTotal && selectedNombre) {
+    const unitTotal = ownedDraftUnitTotal(draft, selectedNombre);
+    if (unitTotal > 0) {
+      detailTotal.textContent = t(lang, "trade.inventory_unit_total", {
+        total: unitTotal,
+      });
+      detailTotal.hidden = false;
+    } else {
+      detailTotal.hidden = true;
+    }
   }
 
   for (const row of body.querySelectorAll(".trade-inv-vote-line")) {
@@ -989,6 +1042,112 @@ function findTradeSuggestions(gap, { onlyOwned = false, avgRecvDemand = null } =
     .slice(0, 6);
 }
 
+function inventoryDraftModeHtml(summary) {
+  const restricted = summary.entries > 0;
+  if (!restricted) {
+    return `<strong>${escapeHtml(t(lang, "trade.inventory_mode_open"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_mode_open_hint"))}</span>`;
+  }
+  const count = t(lang, "trade.inventory_count", summary);
+  const total = t(lang, "trade.inventory_total", { total: summary.total });
+  return `<strong>${escapeHtml(t(lang, "trade.inventory_mode_restricted"))}</strong><span>${escapeHtml(count)} · ${escapeHtml(total)}</span>`;
+}
+
+function buildTradeInvSlotEl({ unit: u, voteKey, qty }, { onActivate } = {}) {
+  const slot = document.createElement("div");
+  slot.className = `trade-inv-slot ${cardRarityClass(u.rareza)}`.trim();
+  const vi = Number(String(voteKey).replace(/\D/g, "")) || 0;
+  slot.title =
+    vi > 0 ? `${unitDisplayName(u)} · V${vi}` : unitDisplayName(u);
+  if (onActivate) {
+    slot.role = "button";
+    slot.tabIndex = 0;
+    slot.setAttribute(
+      "aria-label",
+      `${unitDisplayName(u)} · click para quitar 1`,
+    );
+    slot.addEventListener("click", onActivate);
+    slot.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      ev.preventDefault();
+      onActivate();
+    });
+  }
+
+  const img = document.createElement("img");
+  img.className = "trade-inv-slot-img";
+  img.src = u.imagen ? assetUrl(u.imagen) : "";
+  img.alt = "";
+
+  const vimg = document.createElement("img");
+  vimg.className = "trade-inv-slot-vote";
+  vimg.src = assetUrl(`assets/votos/${voteKey}.png`);
+  vimg.alt = voteKey;
+
+  const qb = document.createElement("span");
+  qb.className = "trade-inv-slot-qty";
+  qb.textContent = qty >= 100 ? "99+" : String(qty);
+
+  vimg.onerror = () => {
+    vimg.remove();
+    const fb = document.createElement("span");
+    fb.className = "trade-inv-slot-vote trade-inv-slot-vote--fallback";
+    fb.textContent = vi > 0 ? String(vi) : "?";
+    slot.insertBefore(fb, qb);
+  };
+
+  slot.appendChild(img);
+  slot.appendChild(vimg);
+  slot.appendChild(qb);
+  return slot;
+}
+
+function renderOwnedDraftStrip(stripEl, draft, selectedNombre) {
+  stripEl.innerHTML = "";
+  const entries = ownedDraftEntries(draft);
+  if (!entries.length) {
+    const empty = document.createElement("p");
+    empty.className = "trade-inventory-empty muted";
+    empty.textContent = t(lang, "trade.inventory_strip_empty");
+    stripEl.appendChild(empty);
+    return;
+  }
+
+  for (const entry of entries) {
+    stripEl.appendChild(
+      buildTradeInvSlotEl(entry, {
+        onActivate: () => {
+          adjustOwnedDraftEntry(
+            draft,
+            entry.unit.nombre,
+            entry.voteKey,
+            -1,
+          );
+          patchInventoryDraftUI(draft, selectedNombre);
+        },
+      }),
+    );
+  }
+}
+
+function buildOwnedDraftStrip(draft, selectedNombre) {
+  const section = document.createElement("section");
+  section.className =
+    "trade-inventory trade-inventory--draft trade-inv-dialog-strip";
+
+  const label = document.createElement("div");
+  label.className = "trade-inventory-label";
+  label.textContent = t(lang, "trade.inventory_strip_label");
+
+  const strip = document.createElement("div");
+  strip.className = "trade-inventory-strip";
+  strip.dataset.ownedDraftStrip = "1";
+  renderOwnedDraftStrip(strip, draft, selectedNombre);
+
+  section.appendChild(label);
+  section.appendChild(strip);
+  return section;
+}
+
 function ensureTradeInventoryDialog() {
   if (tradeInventoryDialogEl) return;
   const d = document.createElement("dialog");
@@ -1073,6 +1232,14 @@ function buildInventoryDetailPanel(u, draft) {
   });
   heroMeta.appendChild(title);
   if (u.rareza) heroMeta.appendChild(buildRarityBadge(u.rareza));
+  const unitTotal = ownedDraftUnitTotal(draft, u.nombre);
+  const totalEl = document.createElement("p");
+  totalEl.className = "trade-inv-detail-unit-total";
+  totalEl.textContent = t(lang, "trade.inventory_unit_total", {
+    total: unitTotal,
+  });
+  totalEl.hidden = unitTotal <= 0;
+  heroMeta.appendChild(totalEl);
   heroMeta.appendChild(sub);
   heroMeta.appendChild(buildUnitDemandRow(u, { compact: true }));
 
@@ -1161,10 +1328,7 @@ function renderTradeInventoryDialogBody(
   body.innerHTML = "";
 
   const restricted = draft.length > 0;
-  const summary = {
-    entries: draft.length,
-    qty: draft.reduce((sum, e) => sum + e.qty, 0),
-  };
+  const summary = inventoryDraftSummary(draft);
 
   const head = document.createElement("div");
   head.className = "trade-inv-dialog-head";
@@ -1180,13 +1344,13 @@ function renderTradeInventoryDialogBody(
 
   const mode = document.createElement("div");
   mode.className = `trade-inv-mode ${restricted ? "trade-inv-mode--restricted" : "trade-inv-mode--open"}`.trim();
-  mode.innerHTML = restricted
-    ? `<strong>${escapeHtml(t(lang, "trade.inventory_mode_restricted"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_count", summary))}</span>`
-    : `<strong>${escapeHtml(t(lang, "trade.inventory_mode_open"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_mode_open_hint"))}</span>`;
+  mode.innerHTML = inventoryDraftModeHtml(summary);
 
   head.appendChild(headTop);
   head.appendChild(mode);
   body.appendChild(head);
+
+  body.appendChild(buildOwnedDraftStrip(draft, selectedNombre));
 
   const searchWrap = document.createElement("div");
   searchWrap.className = "trade-inventory-search trade-inv-search";
@@ -1923,54 +2087,15 @@ function buildTradeInventory(sideName) {
     empty.textContent = t(lang, "trade.stock_empty");
     strip.appendChild(empty);
   } else {
-    for (const { unit: u, voteKey, qty } of entries) {
-      const slot = document.createElement("div");
-      slot.className = `trade-inv-slot ${cardRarityClass(u.rareza)}`.trim();
-      const vi = Number(String(voteKey).replace(/\D/g, "")) || 0;
-      slot.title =
-        vi > 0
-          ? `${unitDisplayName(u)} · V${vi}`
-          : unitDisplayName(u);
-      slot.role = "button";
-      slot.tabIndex = 0;
-      slot.setAttribute("aria-label", `${unitDisplayName(u)} · click para quitar 1`);
-      slot.addEventListener("click", () => {
-        adjustTradeVotes(sideName, u.nombre, voteKey, -1);
-        renderApp();
-      });
-      slot.addEventListener("keydown", (ev) => {
-        if (ev.key !== "Enter" && ev.key !== " ") return;
-        ev.preventDefault();
-        adjustTradeVotes(sideName, u.nombre, voteKey, -1);
-        renderApp();
-      });
-
-      const img = document.createElement("img");
-      img.className = "trade-inv-slot-img";
-      img.src = u.imagen ? assetUrl(u.imagen) : "";
-      img.alt = "";
-
-      const vimg = document.createElement("img");
-      vimg.className = "trade-inv-slot-vote";
-      vimg.src = assetUrl(`assets/votos/${voteKey}.png`);
-      vimg.alt = voteKey;
-
-      const qb = document.createElement("span");
-      qb.className = "trade-inv-slot-qty";
-      qb.textContent = qty >= 100 ? "99+" : String(qty);
-
-      vimg.onerror = () => {
-        vimg.remove();
-        const fb = document.createElement("span");
-        fb.className = "trade-inv-slot-vote trade-inv-slot-vote--fallback";
-        fb.textContent = vi > 0 ? String(vi) : "?";
-        slot.insertBefore(fb, qb);
-      };
-
-      slot.appendChild(img);
-      slot.appendChild(vimg);
-      slot.appendChild(qb);
-      strip.appendChild(slot);
+    for (const entry of entries) {
+      strip.appendChild(
+        buildTradeInvSlotEl(entry, {
+          onActivate: () => {
+            adjustTradeVotes(sideName, entry.unit.nombre, entry.voteKey, -1);
+            renderApp();
+          },
+        }),
+      );
     }
   }
 
