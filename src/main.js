@@ -565,6 +565,66 @@ function syncDraftToStorage(draft) {
   saveOwnedInventory();
 }
 
+function inventoryDraftSummary(draft) {
+  return {
+    entries: draft.length,
+    qty: draft.reduce((sum, e) => sum + e.qty, 0),
+  };
+}
+
+function patchInventoryDraftUI(draft, selectedNombre) {
+  const body = tradeInventoryDialogEl?.querySelector("[data-inventory-body]");
+  if (!body) return;
+
+  const restricted = draft.length > 0;
+  const summary = inventoryDraftSummary(draft);
+  const mode = body.querySelector(".trade-inv-mode");
+  if (mode) {
+    mode.className = `trade-inv-mode ${restricted ? "trade-inv-mode--restricted" : "trade-inv-mode--open"}`.trim();
+    mode.innerHTML = restricted
+      ? `<strong>${escapeHtml(t(lang, "trade.inventory_mode_restricted"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_count", summary))}</span>`
+      : `<strong>${escapeHtml(t(lang, "trade.inventory_mode_open"))}</strong><span>${escapeHtml(t(lang, "trade.inventory_mode_open_hint"))}</span>`;
+  }
+
+  for (const tile of body.querySelectorAll(".trade-inv-tile")) {
+    const nombre = tile.dataset.nombre;
+    if (!nombre) continue;
+    const ownedQty = ownedQtyForUnit(draft, nombre);
+    tile.classList.toggle("trade-inv-tile--owned", ownedQty > 0);
+    let badge = tile.querySelector(".trade-inv-tile-badge");
+    if (ownedQty > 0) {
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "trade-inv-tile-badge";
+        tile.appendChild(badge);
+      }
+      badge.textContent = `×${ownedQty}`;
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+
+  const detailSub = body.querySelector(".trade-inv-detail-hero-meta p.muted");
+  if (detailSub && selectedNombre) {
+    detailSub.textContent = t(lang, "trade.inventory_detail_sub", {
+      qty: ownedQtyForUnit(draft, selectedNombre),
+    });
+  }
+
+  for (const row of body.querySelectorAll(".trade-inv-vote-line")) {
+    const vk = row.dataset.voteKey;
+    const nombre = row.dataset.unitNombre;
+    if (!vk || !nombre) continue;
+    const qty = getOwnedQtyForVote(draft, nombre, vk);
+    const cnt = row.querySelector(".cnt");
+    const btnMinus = row.querySelector(".minus");
+    const btnPlus = row.querySelector(".plus");
+    if (cnt) cnt.textContent = String(qty);
+    if (btnMinus) btnMinus.disabled = qty <= 0;
+    if (btnPlus) btnPlus.disabled = qty >= 99;
+  }
+}
+
 function isInventoryRestricted() {
   return tradeOwnedInventory.length > 0;
 }
@@ -928,6 +988,7 @@ function buildInventoryUnitTile(u, draft, selectedNombre) {
   const ownedQty = ownedQtyForUnit(draft, u.nombre);
   const btn = document.createElement("button");
   btn.type = "button";
+  btn.dataset.nombre = u.nombre;
   btn.className = [
     "trade-inv-tile",
     cardRarityClass(u.rareza),
@@ -966,7 +1027,7 @@ function buildInventoryUnitTile(u, draft, selectedNombre) {
   return btn;
 }
 
-function buildInventoryDetailPanel(u, draft, refresh) {
+function buildInventoryDetailPanel(u, draft) {
   const panel = document.createElement("div");
   panel.className = `trade-inv-detail ${cardRarityClass(u.rareza)}`.trim();
 
@@ -1009,6 +1070,8 @@ function buildInventoryDetailPanel(u, draft, refresh) {
     const vk = voteKey(voteNums[0]);
     const row = document.createElement("div");
     row.className = "vote-line trade-inv-vote-line";
+    row.dataset.voteKey = vk;
+    row.dataset.unitNombre = u.nombre;
 
     const voteImg = document.createElement("img");
     voteImg.className = "vote-icon";
@@ -1044,13 +1107,11 @@ function buildInventoryDetailPanel(u, draft, refresh) {
 
     btnMinus.onclick = () => {
       adjustOwnedDraftEntry(draft, u.nombre, vk, -1);
-      syncDraftToStorage(draft);
-      refresh();
+      patchInventoryDraftUI(draft, u.nombre);
     };
     btnPlus.onclick = () => {
       adjustOwnedDraftEntry(draft, u.nombre, vk, 1);
-      syncDraftToStorage(draft);
-      refresh();
+      patchInventoryDraftUI(draft, u.nombre);
     };
 
     row.appendChild(voteImg);
@@ -1070,6 +1131,10 @@ function renderTradeInventoryDialogBody(
   searchQ = "",
   selectedNombre = tradeInventorySelectedUnit,
 ) {
+  const scrollHost = tradeInventoryDialogEl?.querySelector(
+    ".trade-inventory-dialog-inner",
+  );
+  const scrollTop = scrollHost?.scrollTop ?? 0;
   const body = tradeInventoryDialogEl.querySelector("[data-inventory-body]");
   body.innerHTML = "";
 
@@ -1152,12 +1217,9 @@ function renderTradeInventoryDialogBody(
   detailLabel.textContent = t(lang, "trade.inventory_detail_label");
   detailCol.appendChild(detailLabel);
 
-  const refresh = () =>
-    renderTradeInventoryDialogBody(draft, inp.value, tradeInventorySelectedUnit);
-
   const selectedUnit = selectedNombre ? findUnitByName(selectedNombre) : null;
   if (selectedUnit) {
-    detailCol.appendChild(buildInventoryDetailPanel(selectedUnit, draft, refresh));
+    detailCol.appendChild(buildInventoryDetailPanel(selectedUnit, draft));
   } else {
     const empty = document.createElement("div");
     empty.className = "trade-inv-detail-empty";
@@ -1187,6 +1249,10 @@ function renderTradeInventoryDialogBody(
     tradeInventoryDialogEl.close();
     renderApp();
   };
+
+  requestAnimationFrame(() => {
+    if (scrollHost) scrollHost.scrollTop = scrollTop;
+  });
 }
 
 function openTradeInventoryDialog() {
@@ -2340,8 +2406,11 @@ function buildHomeView() {
   backdrop.className = "home-backdrop";
   backdrop.setAttribute("aria-hidden", "true");
   backdrop.innerHTML = `
+    <div class="home-backdrop-mesh"></div>
     <div class="home-backdrop-orb home-backdrop-orb--a"></div>
     <div class="home-backdrop-orb home-backdrop-orb--b"></div>
+    <div class="home-backdrop-orb home-backdrop-orb--c"></div>
+    <div class="home-backdrop-shine"></div>
     <div class="home-backdrop-grid"></div>`;
   d.appendChild(backdrop);
 
