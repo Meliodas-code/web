@@ -185,6 +185,10 @@ export const I18N = {
       inventory_detail_empty: "Selecciona una unidad para editar votos y cantidades.",
       inventory_detail_sub: "{qty} en tu inventario",
       inventory_votes_title: "Votos y cantidades",
+      inventory_strip_label: "Añadido al inventario",
+      inventory_strip_empty: "Aún no has añadido unidades.",
+      inventory_total: "Valor total: {total}",
+      inventory_unit_total: "Valor en stock: {total}",
       suggest_from_owned:
         "Sugerencias según tu inventario ({entries} variantes · {qty} u.)",
       suggest_no_owned:
@@ -483,6 +487,10 @@ export const I18N = {
       inventory_detail_empty: "Select a unit to edit votes and quantities.",
       inventory_detail_sub: "{qty} in your inventory",
       inventory_votes_title: "Votes and quantities",
+      inventory_strip_label: "Added to inventory",
+      inventory_strip_empty: "No units added yet.",
+      inventory_total: "Total value: {total}",
+      inventory_unit_total: "Stock value: {total}",
       suggest_from_owned:
         "Suggestions from your inventory ({entries} variants · {qty} u.)",
       suggest_no_owned:
