@@ -61,6 +61,8 @@ let predictionsRarityFilter =
     ? readRarityFilter("tdhub_pred_rarity")
     : "all";
 
+let lastSearchPredictions = "";
+
 const LANG_COOKIE = "tdhub_lang";
 const LANG_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
 
@@ -640,6 +642,8 @@ function patchInventoryDraftUI(draft, selectedNombre) {
   const scrollTop = scrollHost?.scrollTop ?? 0;
   const body = tradeInventoryDialogEl?.querySelector("[data-inventory-body]");
   if (!body) return;
+  const grid = body.querySelector(".trade-inv-grid");
+  const gridScrollTop = grid?.scrollTop ?? 0;
 
   const summaryCard = body.querySelector("[data-inventory-summary]");
   patchInventorySummaryCard(summaryCard, draft, selectedNombre);
@@ -693,6 +697,44 @@ function patchInventoryDraftUI(draft, selectedNombre) {
   }
 
   if (scrollHost) scrollHost.scrollTop = scrollTop;
+  if (grid) grid.scrollTop = gridScrollTop;
+}
+  const body = tradeInventoryDialogEl?.querySelector("[data-inventory-body]");
+  if (!body) return;
+
+  const scrollHost = tradeInventoryDialogEl?.querySelector(
+    ".trade-inventory-dialog-inner",
+  );
+  const scrollTop = scrollHost?.scrollTop ?? 0;
+  const grid = body.querySelector(".trade-inv-grid");
+  const gridScrollTop = grid?.scrollTop ?? 0;
+
+  for (const tile of body.querySelectorAll(".trade-inv-tile")) {
+    const nombre = tile.dataset.nombre;
+    tile.classList.toggle("trade-inv-tile--active", nombre === selectedNombre);
+  }
+
+  const detailCol = body.querySelector(".trade-inv-detail-col");
+  if (!detailCol) return;
+
+  for (const child of [...detailCol.children]) {
+    if (!child.classList.contains("trade-inv-col-label")) child.remove();
+  }
+
+  const selectedUnit = selectedNombre ? findUnitByName(selectedNombre) : null;
+  if (selectedUnit) {
+    detailCol.appendChild(buildInventoryDetailPanel(selectedUnit, draft));
+  } else {
+    const empty = document.createElement("div");
+    empty.className = "trade-inv-detail-empty";
+    empty.textContent = t(lang, "trade.inventory_detail_empty");
+    detailCol.appendChild(empty);
+  }
+
+  requestAnimationFrame(() => {
+    if (grid) grid.scrollTop = gridScrollTop;
+    if (scrollHost) scrollHost.scrollTop = scrollTop;
+  });
 }
 
 function isInventoryRestricted() {
@@ -1381,6 +1423,8 @@ function renderTradeInventoryDialogBody(
     ".trade-inventory-dialog-inner",
   );
   const scrollTop = scrollHost?.scrollTop ?? 0;
+  const prevGrid = tradeInventoryDialogEl?.querySelector(".trade-inv-grid");
+  const gridScrollTop = prevGrid?.scrollTop ?? 0;
   const body = tradeInventoryDialogEl.querySelector("[data-inventory-body]");
   body.innerHTML = "";
 
@@ -1427,8 +1471,9 @@ function renderTradeInventoryDialogBody(
     if (!firstVisible) firstVisible = u.nombre;
     const tile = buildInventoryUnitTile(u, draft, selectedNombre);
     tile.onclick = () => {
+      if (tradeInventorySelectedUnit === u.nombre) return;
       tradeInventorySelectedUnit = u.nombre;
-      renderTradeInventoryDialogBody(draft, inp.value, u.nombre);
+      patchInventoryUnitSelection(draft, u.nombre);
     };
     grid.appendChild(tile);
   }
@@ -1482,6 +1527,8 @@ function renderTradeInventoryDialogBody(
   };
 
   requestAnimationFrame(() => {
+    const grid = body.querySelector(".trade-inv-grid");
+    if (grid) grid.scrollTop = gridScrollTop;
     if (scrollHost) scrollHost.scrollTop = scrollTop;
   });
 }
