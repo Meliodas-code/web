@@ -2999,6 +2999,28 @@ main.content.content--home > * {
   color: #6ee7b7;
 }
 
+.trade-inv-dialog-strip {
+  margin-bottom: 0.85rem;
+  border-color: rgba(52, 211, 153, 0.28);
+  box-shadow: inset 0 0 28px rgba(52, 211, 153, 0.05);
+}
+
+.trade-inventory--draft .trade-inventory-label {
+  color: #6ee7b7;
+}
+
+.trade-inv-dialog-strip .trade-inventory-strip {
+  min-height: 96px;
+  max-height: min(220px, 26vh);
+}
+
+.trade-inv-detail-unit-total {
+  margin: 0.28rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #6ee7b7;
+}
+
 .trade-inv-search {
   margin: 0 0 0.85rem;
 }
