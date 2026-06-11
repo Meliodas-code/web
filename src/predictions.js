@@ -1,27 +1,19 @@
 import { rarityRank, normalizeRarity } from "./rarity.js";
-import { VOTE_DISPLAY_ORDER, voteKey } from "./votes.js";
+import { uniqueVoteGroupsForUnit } from "./voteGroups.js";
 
 const STORAGE_KEY = "tdhub_value_history";
 const MAX_SNAPSHOTS = 14;
-const TRACKED_VOTES = [2, 13];
-
-function voteVal(unit, vote_values, vk) {
-  const base = Number(unit.valor) || 0;
-  const uv = vote_values[unit.nombre] || {};
-  if (vk === "voto13") return uv.voto13 ?? uv.voto2 ?? base;
-  return uv[vk] ?? base;
-}
 
 function buildSnapshot(units, vote_values) {
-  /** @type {Record<string, { valor: number, votes: Record<string, number> }>} */
+  /** @type {Record<string, { valor: number, voteGroups: Record<string, number> }>} */
   const map = {};
   for (const u of units) {
-    const votes = {};
-    for (const vn of VOTE_DISPLAY_ORDER) {
-      const vk = voteKey(vn);
-      votes[vk] = voteVal(u, vote_values, vk);
+    /** @type {Record<string, number>} */
+    const voteGroups = {};
+    for (const g of uniqueVoteGroupsForUnit(u, vote_values)) {
+      voteGroups[g.bucketKey] = g.value;
     }
-    map[u.nombre] = { valor: Number(u.valor) || 0, votes };
+    map[u.nombre] = { valor: Number(u.valor) || 0, voteGroups };
   }
   return { at: Date.now(), units: map };
 }
@@ -90,13 +82,20 @@ function rarityMedians(units) {
   return out;
 }
 
-function sparklineFromHistory(history, unitName, field = "valor") {
+function prevGroupValue(prevSnap, bucketKey, currentVal) {
+  if (!prevSnap) return currentVal;
+  if (prevSnap.voteGroups?.[bucketKey] != null) {
+    return prevSnap.voteGroups[bucketKey];
+  }
+  return currentVal;
+}
+
+function sparklineFromHistory(history, unitName) {
   const points = [];
   for (const snap of history) {
     const row = snap.units?.[unitName];
     if (!row) continue;
-    if (field === "valor") points.push(row.valor);
-    else if (row.votes?.[field] != null) points.push(row.votes[field]);
+    points.push(row.valor);
   }
   if (points.length < 2) {
     const last = points[0] ?? 0;
@@ -109,7 +108,7 @@ function sparklineFromHistory(history, unitName, field = "valor") {
  * @returns {Array<{
  *   unit: object,
  *   base: { current: number, delta: number, trend: string, source: string },
- *   votes: Record<string, { current: number, delta: number, trend: string, source: string }>,
+ *   voteGroups: Array<{ value: number, voteNums: number[], bucketKey: string, isIncompatible: boolean, current: number, delta: number, trend: string, source: string }>,
  *   sparkline: number[],
  *   score: number,
  *   tipKey: string
@@ -122,7 +121,6 @@ export function buildPredictions(units, vote_values, history) {
 
   for (const unit of units) {
     const name = unit.nombre;
-    const curSnap = history[history.length - 1]?.units?.[name];
     const prevSnap = prev?.units?.[name];
     const current = Number(unit.valor) || 0;
     const prevVal = prevSnap?.valor ?? current;
@@ -146,12 +144,9 @@ export function buildPredictions(units, vote_values, history) {
       else if (med > 0 && current > med * 1.1) baseTrend = "forecast_down";
     }
 
-    /** @type {Record<string, { current: number, delta: number, trend: string, source: string }>} */
-    const votes = {};
-    for (const vn of TRACKED_VOTES) {
-      const vk = voteKey(vn);
-      const vCur = voteVal(unit, vote_values, vk);
-      const vPrev = prevSnap?.votes?.[vk] ?? vCur;
+    const voteGroups = uniqueVoteGroupsForUnit(unit, vote_values).map((g) => {
+      const vCur = g.value;
+      const vPrev = prevGroupValue(prevSnap, g.bucketKey, vCur);
       const vDelta = vCur - vPrev;
       let vTrend = trendFromDelta(vDelta);
       let vSource = prevSnap ? "change" : "none";
@@ -162,18 +157,44 @@ export function buildPredictions(units, vote_values, history) {
         vTrend = "forecast_down";
         vSource = "heuristic";
       }
-      votes[vk] = { current: vCur, delta: vDelta, trend: vTrend, source: vSource };
+      return {
+        ...g,
+        current: vCur,
+        delta: vDelta,
+        trend: vTrend,
+        source: vSource,
+      };
+    });
+
+    let voteScore = 0;
+    let incompatibleMoved = false;
+    for (const g of voteGroups) {
+      if (g.trend === "up" || g.trend === "forecast_up") {
+        voteScore += g.isIncompatible ? 2 : 1;
+        if (g.isIncompatible && g.delta !== 0) incompatibleMoved = true;
+      } else if (g.trend === "down" || g.trend === "forecast_down") {
+        voteScore -= g.isIncompatible ? 2 : 1;
+        if (g.isIncompatible && g.delta !== 0) incompatibleMoved = true;
+      }
     }
 
     const score =
       (baseTrend === "up" || baseTrend === "forecast_up" ? 2 : 0) +
       (baseTrend === "down" || baseTrend === "forecast_down" ? -2 : 0) +
-      (votes.voto2?.trend === "up" ? 1 : votes.voto2?.trend === "down" ? -1 : 0);
+      voteScore;
 
     let tipKey = "predictions.tip_stable";
-    if (baseTrend === "up" || votes.voto2?.trend === "up") tipKey = "predictions.tip_trade";
-    else if (baseTrend === "forecast_up") tipKey = "predictions.tip_hold";
-    else if (baseTrend === "down" || baseTrend === "forecast_down") tipKey = "predictions.tip_caution";
+    const anyVoteUp = voteGroups.some(
+      (g) => g.trend === "up" || g.trend === "forecast_up",
+    );
+    if (baseTrend === "up" || anyVoteUp) {
+      tipKey = incompatibleMoved
+        ? "predictions.tip_trade_incompat"
+        : "predictions.tip_trade";
+    } else if (baseTrend === "forecast_up") tipKey = "predictions.tip_hold";
+    else if (baseTrend === "down" || baseTrend === "forecast_down") {
+      tipKey = "predictions.tip_caution";
+    }
 
     rows.push({
       unit,
@@ -183,8 +204,8 @@ export function buildPredictions(units, vote_values, history) {
         trend: baseTrend,
         source: baseSource,
       },
-      votes,
-      sparkline: sparklineFromHistory(history, name, "valor"),
+      voteGroups,
+      sparkline: sparklineFromHistory(history, name),
       score,
       tipKey,
     });
