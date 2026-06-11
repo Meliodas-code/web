@@ -277,6 +277,11 @@ export const I18N = {
       spotlight_title: "Movimientos destacados",
       spotlight_risers: "Subiendo ahora",
       spotlight_fallers: "Bajando ahora",
+      search: "Buscar unidad…",
+      dash_title: "Pulso del mercado",
+      dash_hint_ready: "Historial activo — deltas desde el último cambio de lista.",
+      dash_hint_warming: "Recopilando historial. Los deltas aparecerán tras el próximo balance.",
+      filter_hint: "Pulsa una tarjeta para filtrar",
     },
     credits: {
       title: "CRÉDITOS",
@@ -579,6 +584,11 @@ export const I18N = {
       spotlight_title: "Featured movers",
       spotlight_risers: "Rising now",
       spotlight_fallers: "Falling now",
+      search: "Search unit…",
+      dash_title: "Market pulse",
+      dash_hint_ready: "History active — deltas since the last value list change.",
+      dash_hint_warming: "Building history. Deltas will appear after the next balance patch.",
+      filter_hint: "Tap a card to filter",
     },
     credits: {
       title: "CREDITS",
