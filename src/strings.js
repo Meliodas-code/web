@@ -137,12 +137,17 @@ export const I18N = {
       suggest_toggle: "Sugerencias inteligentes",
       suggest_hide: "Ocultar sugerencias",
       suggest_need_more:
-        "Te faltan {gap} pts para igualar la oferta rival.",
+        "El rival ofrece {gap} pts más. Puedes añadir hasta {max} y seguir ganando.",
+      suggest_strategy:
+        "Prioriza unidades de baja demanda y combina varias de menor valor si hace falta.",
       suggest_fair: "El trade ya está equilibrado.",
       suggest_winning: "Vas ganando por {gap} pts.",
       suggest_empty_right:
         "Añade unidades en la oferta rival para analizar el trade.",
       suggest_receive: "Recibes unidades con demanda media {dem}/10.",
+      suggest_give_demand: "Das demanda {dem}/10",
+      suggest_offer: "Ofreces +{val} pts",
+      suggest_win_margin: "+{margin} pts de ventaja",
       suggest_add:
         "Añade {name} (+{val}) — quedarías a {remain} pts del rival",
       suggest_add_pair:
@@ -156,17 +161,26 @@ export const I18N = {
       inventory_open: "Mi inventario del juego",
       inventory_title: "Unidades que tienes",
       inventory_hint:
-        "Marca las unidades que tienes. Se guardan automáticamente para la próxima vez.",
+        "Indica qué tienes, con qué voto y cuántas copias. Se guarda automáticamente.",
       inventory_save: "Guardar y cerrar",
       inventory_clear: "Limpiar selección",
       inventory_reset: "Restablecer inventario",
       inventory_reset_hint: "Borra tu inventario guardado del sugeridor",
-      inventory_saved: "Inventario guardado · {n} unidades listas para el sugeridor",
+      inventory_saved:
+        "Inventario guardado · {entries} variantes · {qty} unidades",
       inventory_search: "Buscar unidad…",
-      inventory_count: "{n} unidades seleccionadas",
-      suggest_from_owned: "Sugerencias según tu inventario ({n} unidades)",
+      inventory_count: "{entries} variantes · {qty} unidades en total",
+      inventory_stock_title: "Tu stock guardado",
+      inventory_grid_hint: "Pulsa una unidad para añadirla (voto base +1)",
+      inventory_qty: "Cant.",
+      inventory_vote: "Voto",
+      inventory_entry_val: "{val} pts c/u",
+      inventory_add_vote: "+ Voto",
+      inventory_add_vote_hint: "Añade la misma unidad con otro voto",
+      suggest_from_owned:
+        "Sugerencias según tu inventario ({entries} variantes · {qty} u.)",
       suggest_no_owned:
-        "Ninguna unidad marcada encaja con el gap. Añade más en «Mi inventario del juego».",
+        "Nada de tu inventario encaja manteniendo ventaja. Ajusta stock o añade más unidades.",
     },
     demand: {
       fair: "Valor justo",
@@ -406,12 +420,18 @@ export const I18N = {
       value: "Value",
       suggest_toggle: "Smart suggestions",
       suggest_hide: "Hide suggestions",
-      suggest_need_more: "You need {gap} more pts to match the opponent offer.",
+      suggest_need_more:
+        "They offer {gap} more pts. You can add up to {max} and still stay ahead.",
+      suggest_strategy:
+        "Favors low-demand units and mixes cheaper ones to fill the gap.",
       suggest_fair: "This trade is already balanced.",
       suggest_winning: "You are ahead by {gap} pts.",
       suggest_empty_right:
         "Add units on the opponent side to analyze this trade.",
       suggest_receive: "You receive units with average demand {dem}/10.",
+      suggest_give_demand: "You give demand {dem}/10",
+      suggest_offer: "You offer +{val} pts",
+      suggest_win_margin: "+{margin} pts ahead",
       suggest_add:
         "Add {name} (+{val}) — you would be {remain} pts short of them",
       suggest_add_pair:
@@ -425,17 +445,25 @@ export const I18N = {
       inventory_open: "My in-game inventory",
       inventory_title: "Units you own",
       inventory_hint:
-        "Mark the units you own. They are saved automatically for next time.",
+        "Set what you own, vote type, and quantity. Saved automatically.",
       inventory_save: "Save and close",
       inventory_clear: "Clear selection",
       inventory_reset: "Reset inventory",
       inventory_reset_hint: "Clears your saved inventory from the suggester",
-      inventory_saved: "Inventory saved · {n} units ready for suggestions",
+      inventory_saved: "Inventory saved · {entries} variants · {qty} units",
       inventory_search: "Search unit…",
-      inventory_count: "{n} units selected",
-      suggest_from_owned: "Suggestions from your inventory ({n} units)",
+      inventory_count: "{entries} variants · {qty} units total",
+      inventory_stock_title: "Your saved stock",
+      inventory_grid_hint: "Tap a unit to add it (base vote +1)",
+      inventory_qty: "Qty",
+      inventory_vote: "Vote",
+      inventory_entry_val: "{val} pts each",
+      inventory_add_vote: "+ Vote",
+      inventory_add_vote_hint: "Add the same unit with another vote",
+      suggest_from_owned:
+        "Suggestions from your inventory ({entries} variants · {qty} u.)",
       suggest_no_owned:
-        "No marked units fit the gap. Add more in «My in-game inventory».",
+        "Nothing in your inventory fits while staying ahead. Adjust stock or add units.",
     },
     demand: {
       fair: "Fair value",
