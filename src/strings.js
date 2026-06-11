@@ -17,7 +17,11 @@ export const I18N = {
       home_subtitle:
         "Herramienta hecha por fans para calcular valores, comparar trades y consultar la base de datos de unidades.",
       home_fanmade_notice:
-        "Esta web NO es oficial del juego. Es un proyecto fan-made creado por @meliodas_000, sin afiliación con los desarrolladores de Sorcerer TD.",
+        "Esta web NO es oficial del juego. Es un proyecto fan-made creado por @meliodas_000 y @Toropapita, sin afiliación con los desarrolladores de Sorcerer TD.",
+      home_tools_title: "Herramientas",
+      home_pulse_title: "Pulso del mercado",
+      home_pulse_cta: "Ver predictions",
+      home_pulse_empty: "Aún no hay señales destacadas. Consulta Predictions tras cambios en la lista.",
       list_values_thanks:
         "Los valores de referencia provienen del equipo de Sorcerer TD Value List.",
       official_list_link: "Lista de referencia (Google Sheets)",
@@ -289,7 +293,7 @@ export const I18N = {
       role_tester_ideas: "Tester e ideas",
       open_discord: "Abrir Discord",
       open_roblox: "Abrir Roblox",
-      hecho_por: "Hecho por: @meliodas_000.",
+      hecho_por: "Hecho por: @meliodas_000 y @Toropapita.",
       idea: "Idea propuesta por: @Toropapita",
       database: "Base de datos: @Toropapita",
     },
@@ -310,7 +314,11 @@ export const I18N = {
       home_subtitle:
         "A fan-made tool to calculate values, compare trades, and browse the unit database.",
       home_fanmade_notice:
-        "This site is NOT official. It is a fan-made project by @meliodas_000, not affiliated with Sorcerer TD developers.",
+        "This site is NOT official. It is a fan-made project by @meliodas_000 and @Toropapita, not affiliated with Sorcerer TD developers.",
+      home_tools_title: "Tools",
+      home_pulse_title: "Market pulse",
+      home_pulse_cta: "View predictions",
+      home_pulse_empty: "No standout signals yet. Check Predictions after value list updates.",
       list_values_thanks:
         "Reference values come from the Sorcerer TD Value List team.",
       official_list_link: "Reference spreadsheet (Google Sheets)",
@@ -581,7 +589,7 @@ export const I18N = {
       role_tester_ideas: "Tester & ideas",
       open_discord: "Open Discord",
       open_roblox: "Open Roblox",
-      hecho_por: "Made by: @meliodas_000.",
+      hecho_por: "Made by: @meliodas_000 and @Toropapita.",
       idea: "Idea proposed by: @Toropapita",
       database: "Database: @Toropapita",
     },
