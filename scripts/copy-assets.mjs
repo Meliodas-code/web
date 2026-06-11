@@ -17,6 +17,18 @@ if (!fs.existsSync(srcAssets)) {
   process.exit(0);
 }
 
-fs.rmSync(destAssets, { recursive: true, force: true });
-fs.cpSync(srcAssets, destAssets, { recursive: true });
-console.log("[copy-assets] Copiado a web/public/assets");
+function copyMerge(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyMerge(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+copyMerge(srcAssets, destAssets);
+console.log("[copy-assets] Copiado a web/public/assets (merge, sin borrar extras)");
