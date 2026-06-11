@@ -224,6 +224,15 @@ main.content {
   position: relative;
   max-width: 980px;
   margin: 0 auto;
+  isolation: isolate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-backdrop-mesh,
+  .home-backdrop-orb,
+  .home-backdrop-shine {
+    animation: none;
+  }
 }
 
 .fanmade-banner {
@@ -407,44 +416,131 @@ main.content {
 
 .home-backdrop {
   position: absolute;
-  inset: -1rem -0.5rem auto;
-  height: 28rem;
+  inset: -2rem -1rem auto;
+  height: 36rem;
   pointer-events: none;
   overflow: hidden;
   z-index: 0;
 }
 
+.home-backdrop-mesh {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(ellipse 55% 45% at 15% 25%, rgba(56, 189, 248, 0.22), transparent 58%),
+    radial-gradient(ellipse 50% 40% at 85% 20%, rgba(244, 114, 182, 0.18), transparent 55%),
+    radial-gradient(ellipse 45% 38% at 55% 75%, rgba(167, 139, 250, 0.2), transparent 58%),
+    radial-gradient(ellipse 40% 35% at 25% 80%, rgba(52, 211, 153, 0.14), transparent 55%);
+  animation: home-mesh-drift 18s ease-in-out infinite alternate;
+}
+
 .home-backdrop-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.55;
+  filter: blur(70px);
+  opacity: 0.65;
+  will-change: transform;
 }
 
 .home-backdrop-orb--a {
-  width: 18rem;
-  height: 18rem;
-  top: -4rem;
-  left: -3rem;
-  background: rgba(43, 140, 221, 0.28);
+  width: 22rem;
+  height: 22rem;
+  top: -5rem;
+  left: -4rem;
+  background: rgba(14, 165, 233, 0.38);
+  animation: home-orb-float-a 14s ease-in-out infinite;
 }
 
 .home-backdrop-orb--b {
-  width: 16rem;
-  height: 16rem;
-  top: 2rem;
-  right: -2rem;
-  background: rgba(232, 93, 84, 0.22);
+  width: 18rem;
+  height: 18rem;
+  top: 1rem;
+  right: -3rem;
+  background: rgba(244, 63, 94, 0.32);
+  animation: home-orb-float-b 16s ease-in-out infinite;
+}
+
+.home-backdrop-orb--c {
+  width: 15rem;
+  height: 15rem;
+  bottom: -2rem;
+  left: 38%;
+  background: rgba(139, 92, 246, 0.34);
+  animation: home-orb-float-c 12s ease-in-out infinite;
+}
+
+.home-backdrop-shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.05) 48%,
+    transparent 66%
+  );
+  background-size: 220% 100%;
+  animation: home-shine-sweep 9s ease-in-out infinite;
+  opacity: 0.7;
 }
 
 .home-backdrop-grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: linear-gradient(180deg, #000 0%, transparent 88%);
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(180deg, #000 0%, transparent 92%);
+  opacity: 0.55;
+}
+
+@keyframes home-mesh-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(2%, -3%, 0) scale(1.06);
+  }
+}
+
+@keyframes home-orb-float-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(1.5rem, 1rem, 0);
+  }
+}
+
+@keyframes home-orb-float-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-1.25rem, 0.75rem, 0);
+  }
+}
+
+@keyframes home-orb-float-c {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0.75rem, -1rem, 0);
+  }
+}
+
+@keyframes home-shine-sweep {
+  0%,
+  100% {
+    background-position: 120% 0;
+  }
+  50% {
+    background-position: -20% 0;
+  }
 }
 
 .home-hero {
@@ -455,12 +551,13 @@ main.content {
   padding: clamp(1.35rem, 3vw, 2rem);
   text-align: center;
   border-radius: calc(var(--radius-lg) + 4px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background:
-    linear-gradient(145deg, rgba(43, 140, 221, 0.1), transparent 42%),
-    linear-gradient(220deg, rgba(232, 93, 84, 0.06), transparent 38%),
-    rgba(0, 0, 0, 0.28);
-  box-shadow: var(--shadow-card);
+    linear-gradient(145deg, rgba(56, 189, 248, 0.12), transparent 42%),
+    linear-gradient(220deg, rgba(167, 139, 250, 0.1), transparent 40%),
+    rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-card), 0 0 48px rgba(56, 189, 248, 0.08);
 }
 
 .home-hero-stats {
@@ -3911,36 +4008,40 @@ main.content {
 .vote-icon--incompatible,
 .values-vote-pill--multi img,
 .values-vote-pill--multi .vote-icon {
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
 }
 
 .vote-line img.vote-icon--incompatible,
 .vote-line .vote-icon--incompatible {
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
 }
 
 .pred-vote-group--incompatible .vote-icon--incompatible {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
 }
 
 .vote-icon--incompatible-fallback {
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: rgba(239, 68, 68, 0.16);
   border: 1px solid rgba(248, 113, 113, 0.35);
   color: #fca5a5;
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 900;
 }
 
 .vote-icon--incompatible-fallback::before {
   content: "✕";
+}
+
+.values-vote-pill--multi {
+  padding: 0.28rem 0.55rem 0.28rem 0.38rem;
 }
 
 .values-vote-pill-label {
