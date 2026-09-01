@@ -8,6 +8,8 @@ const VOTE_NAME_ALIASES = {
   novote: 1,
   sinvoto: 1,
   stengh: 2,
+  strengh: 2,
+  strenth: 2,
   strength: 2,
   fuerza: 2,
   velocidad: 3,
